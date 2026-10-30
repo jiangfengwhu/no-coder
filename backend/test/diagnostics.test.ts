@@ -19,4 +19,14 @@ describe('token diagnostics', () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect(report.jules.configured).toBe(false);
   });
+  it('recognizes account-owned Cloudflare tokens without claiming missing Worker permissions', async () => {
+    const fetcher = vi.fn().mockImplementation(async (url: string) => url.endsWith('/accounts/9f38af437152e2268766afd8fdb6cf72/tokens/verify')
+      ? new Response(JSON.stringify({ success: true, result: { status: 'active' } }))
+      : new Response('{}', { status: 403 }));
+    const report = await checkTokens(env, fetcher as typeof fetch);
+    expect(report.cloudflare.valid).toBe(true);
+    expect(report.cloudflare.tokenType).toBe('account');
+    expect(report.cloudflare.workerSettingsStatus).toBe(403);
+    expect(report.cloudflare.writeTested).toBe(false);
+  });
 });

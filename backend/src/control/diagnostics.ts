@@ -18,7 +18,9 @@ export async function checkTokens(env: Env, fetcher: typeof fetch = fetch) {
     } catch { return { status: 0, ok: false, data: null }; }
   }
   const githubHeaders = { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'noCoder-token-check', 'X-GitHub-Api-Version': '2022-11-28' };
-  const cfHeaders = { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` };
+  const rawCfToken = env.CLOUDFLARE_API_TOKEN ?? '';
+  const normalizedCfToken = rawCfToken.trim().replace(/^Bearer\s+/i, '').replace(/^(['"])(.*)\1$/, '$2');
+  const cfHeaders = { Authorization: `Bearer ${normalizedCfToken}` };
   const repo = `https://api.github.com/repos/${encodeURIComponent(env.GITHUB_OWNER)}/${encodeURIComponent(env.GITHUB_REPO)}`;
   const account = '9f38af437152e2268766afd8fdb6cf72';
   const cfBase = 'https://api.cloudflare.com/client/v4';
@@ -64,21 +66,26 @@ export async function checkTokens(env: Env, fetcher: typeof fetch = fetch) {
     })(),
     (async () => {
       if (!configuredValue(env.CLOUDFLARE_API_TOKEN)) return { configured: false, valid: false };
-      const [verify, settings, routes] = await Promise.all([
+      const [verify, accountVerify, settings, routes] = await Promise.all([
         probe(`${cfBase}/user/tokens/verify`, cfHeaders),
+        probe(`${cfBase}/accounts/${account}/tokens/verify`, cfHeaders),
         probe(`${cfBase}/accounts/${account}/workers/scripts/nocoder-lab/settings`, cfHeaders),
         probe(`${cfBase}/zones/5abe4ba6aee82a3016fe261a208243f4/workers/routes`, cfHeaders),
       ]);
-      const valid = verify.ok && verify.data?.success === true && verify.data?.result?.status === 'active';
-      const tokenId = typeof verify.data?.result?.id === 'string' ? verify.data.result.id : undefined;
+      const userValid = verify.ok && verify.data?.success === true && verify.data?.result?.status === 'active';
+      const accountValid = accountVerify.ok && accountVerify.data?.success === true && accountVerify.data?.result?.status === 'active';
+      const valid = userValid || accountValid;
+      const selected = userValid ? verify : accountVerify;
+      const tokenId = typeof selected.data?.result?.id === 'string' ? selected.data.result.id : undefined;
       let permissionGroups: string[] = [];
       let policyReadStatus: number | null = null;
       if (valid && tokenId && /^[a-f0-9]{32}$/.test(tokenId)) {
-        const details = await probe(`${cfBase}/user/tokens/${tokenId}`, cfHeaders);
+        const details = await probe(`${cfBase}/${userValid ? 'user' : `accounts/${account}`}/tokens/${tokenId}`, cfHeaders);
         policyReadStatus = details.status;
         if (details.ok) permissionGroups = (details.data?.result?.policies ?? []).flatMap((policy: any) => (policy.permission_groups ?? []).map((group: any) => group.name)).filter((name: unknown): name is string => typeof name === 'string');
       }
-      return { configured: true, valid, verifyStatus: verify.status, tokenStatus: valid ? 'active' : undefined,
+      return { configured: true, valid, verifyStatus: verify.status, accountVerifyStatus: accountVerify.status,
+        tokenType: valid ? userValid ? 'user' : 'account' : undefined, normalizationRequired: normalizedCfToken !== rawCfToken, tokenStatus: valid ? 'active' : undefined,
         workerSettingsStatus: settings.status, routesStatus: routes.status, tokenId, policyReadStatus, permissionGroups, writeTested: false };
     })(),
   ]);
