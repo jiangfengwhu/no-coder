@@ -3,7 +3,7 @@ import { Separator } from '@/components/ui/separator';
 
 export function Guide() {
   return <article className="max-w-2xl space-y-7 text-sm leading-7">
-    <section><h2 className="mb-3 text-base font-semibold">这个应用怎样工作</h2><p className="text-muted-foreground">所有人共享同一个应用。你提交功能需求，Jules 读取仓库代码并实现，随后在会话中运行发布脚本，将前端和后端上传到 Cloudflare。</p></section>
+    <section><h2 className="mb-3 text-base font-semibold">这个应用怎样工作</h2><p className="text-muted-foreground">所有人共享同一个画板。提交的需求按顺序交给 Jules，Jules 在画板仓库中实现并发布。</p></section>
     <ol className="list-decimal space-y-4 pl-5 marker:text-muted-foreground">
       <li><strong className="font-medium">提交需求。</strong><span className="text-muted-foreground"> 写清使用场景、所需功能和验收条件。需求内容及处理结果公开。</span></li>
       <li><strong className="font-medium">等待处理。</strong><span className="text-muted-foreground"> 按提交顺序排队，同一时间只有一个 Jules 会话处理任务。</span></li>

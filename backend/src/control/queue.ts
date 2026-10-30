@@ -129,6 +129,15 @@ export class AgentQueue extends DurableObject<Env> {
         const bearer = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
         if (!await secretMatches(bearer, this.env.QUEUE_ADMIN_TOKEN)) throw new HttpError(403, '管理密钥无效。');
         const action = textField(body, 'action', 1, 40);
+        if (action === 'reset_all') {
+          await this.engine.exclusive(async () => {
+            await this.ctx.storage.deleteAlarm();
+            await this.ctx.storage.deleteAll();
+          });
+          this.engine = new QueueEngine(new DurableStore(this.ctx.storage), new LiveProviders(this.env), this.env, () => Date.now(), () => { this.ctx.waitUntil(this.broadcast()); });
+          await this.broadcast();
+          return Response.json({ ok: true });
+        }
         if (action === 'resume' && missingConfig(this.env).length) throw new HttpError(409, '请先完成后端环境变量配置。');
         await this.engine.admin(action, {
           sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,

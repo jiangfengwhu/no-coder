@@ -53,6 +53,7 @@ export interface QueueView {
 export interface Env {
   ASSETS: Fetcher;
   AGENT_QUEUE: DurableObjectNamespace;
+  CANVAS?: Fetcher;
   JULES_API_KEY?: string;
   GITHUB_TOKEN?: string;
   QUEUE_ADMIN_TOKEN?: string;
@@ -68,6 +69,7 @@ export interface Env {
   APP_TREE?: string;
   APP_JOB?: string;
   APP_URL?: string;
+  CANVAS_URL?: string;
   DEPLOY_MODE?: string;
 }
 

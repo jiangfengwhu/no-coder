@@ -9,7 +9,7 @@ describe('hibernating queue WebSocket integration', () => {
     const bundle = await build({ entryPoints: ['backend/src/index.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022', external: ['cloudflare:workers'] });
     runtime = new Miniflare(convertV4MiniflareOptions({ name: 'realtime-test', modules: true, script: bundle.outputFiles[0].text, compatibilityDate: '2026-10-30',
       durableObjects: { AGENT_QUEUE: { className: 'AgentQueue', useSQLite: true } },
-      bindings: { GITHUB_OWNER: 'test', GITHUB_REPO: 'test', GITHUB_BRANCH: 'main', AUTO_MERGE: 'false', DEPLOY_MODE: 'jules' },
+      bindings: { GITHUB_OWNER: 'test', GITHUB_REPO: 'test', GITHUB_BRANCH: 'main', AUTO_MERGE: 'false', DEPLOY_MODE: 'jules', QUEUE_ADMIN_TOKEN: 'test-admin' },
     }));
   });
   afterAll(async () => { await runtime?.dispose(); });
@@ -64,5 +64,14 @@ describe('hibernating queue WebSocket integration', () => {
     b.socket.send('refresh');
     expect(JSON.parse(await b.next()).data.total).toBe(1);
     a.socket.close(1000); b.socket.close(1000);
+  });
+
+  it('clears stored queue data only after administrator authentication', async () => {
+    const post = authorization => runtime.dispatchFetch(`${origin}/api/admin`, { method: 'POST', headers: { Origin: origin, Authorization: authorization, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset_all' }) });
+    expect((await post('Bearer wrong')).status).toBe(403);
+    expect((await post('Bearer test-admin')).status).toBe(200);
+    expect(await (await runtime.dispatchFetch(`${origin}/api/queue`)).json()).toMatchObject({ total: 0, activeId: null, paused: false });
+    await runtime.unsafeEvictDurableObject('realtime-test', 'AgentQueue', { name: 'global-v1' });
+    expect(await (await runtime.dispatchFetch(`${origin}/api/queue`)).json()).toMatchObject({ total: 0, activeId: null, paused: false });
   });
 });

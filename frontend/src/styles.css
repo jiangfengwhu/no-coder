@@ -81,3 +81,24 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* The workspace fills the viewport; the control shell sits above it. */
+.canvas { position: fixed; inset: 0; overflow: hidden; background: var(--background); }
+.canvas-surface { position: absolute; inset: 0; touch-action: none; cursor: grab; background-image: radial-gradient(circle, var(--border) 1px, transparent 1.2px); }
+.canvas-surface.is-dragging { cursor: grabbing; }
+.canvas-world { position: absolute; inset: 0; transform-origin: 0 0; pointer-events: none; }
+.canvas-controls { position: fixed; right: 24px; bottom: 24px; display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.canvas-scale { min-width: 44px; text-align: center; font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.canvas-hint { position: fixed; top: 24px; left: 26px; margin: 0; color: var(--muted-foreground); font-size: 12px; pointer-events: none; }
+.orb { position: fixed; z-index: 10; left: 24px; bottom: 24px; display: flex; align-items: center; gap: 11px; min-width: 190px; padding: 7px 12px 7px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--foreground); text-align: left; box-shadow: 0 3px 14px rgb(0 0 0 / .06); }
+.orb:hover { background: var(--accent); }
+.orb:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.orb-mark { display: grid; width: 40px; height: 40px; flex: none; place-items: center; border-radius: 50%; background: var(--primary); color: var(--primary-foreground); }
+.orb-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; }
+.orb-copy strong { font-size: 13px; font-weight: 600; }
+.orb-copy > span { display: flex; align-items: center; gap: 5px; color: var(--muted-foreground); font-size: 11px; }
+.orb-dot { width: 6px; height: 6px; border-radius: 50%; background: #668675; }
+.orb-dot.warning { background: #bc8750; }
+.orb-arrow { color: var(--muted-foreground); }
+@media (max-width: 480px) { .canvas-hint { top: 16px; left: 16px; } .orb { left: 12px; bottom: 12px; min-width: 0; } .orb-arrow { display: none; } .canvas-controls { right: 12px; bottom: 12px; } }
+.canvas-frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
