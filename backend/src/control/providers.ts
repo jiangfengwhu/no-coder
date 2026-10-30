@@ -62,7 +62,16 @@ export class LiveProviders implements Providers {
       ? { 'x-goog-api-key': this.env.JULES_API_KEY! }
       : { Authorization: `Bearer ${this.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'noCoder-lab', 'X-GitHub-Api-Version': '2022-11-28' };
     const response = await this.fetcher(base + path, { ...init, headers: { ...headers, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) throw new UpstreamError(provider, response.status);
+    if (!response.ok) {
+      if (provider === 'GitHub' && response.status === 403 && path.endsWith('/merge')) {
+        const body = await response.json().catch(() => null) as { message?: string } | null;
+        const reason = body?.message ?? '';
+        if (/resource not accessible|integration|permission/i.test(reason)) throw new HttpError(403, 'GitHub Token 没有合并画板仓库 PR 的权限，请检查 Contents 和 Pull requests 写入权限及仓库授权。');
+        if (/rate limit/i.test(reason)) throw new HttpError(403, 'GitHub API 配额已用完，请稍后重试。');
+        if (/protected|protection|branch|ruleset|review|status check/i.test(reason)) throw new HttpError(403, 'GitHub 仓库的分支保护规则阻止了合并，请检查 PR 的合并要求。');
+      }
+      throw new UpstreamError(provider, response.status);
+    }
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
