@@ -22,21 +22,50 @@ export class AgentQueue extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.engine = new QueueEngine(new DurableStore(ctx.storage), new LiveProviders(env), env);
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    this.engine = new QueueEngine(new DurableStore(ctx.storage), new LiveProviders(env), env, () => Date.now(), () => {
+      this.ctx.waitUntil(this.broadcast());
+    });
   }
+
+  private async broadcast() {
+    const snapshots = new Map<string, string>();
+    for (const socket of this.ctx.getWebSockets()) {
+      try {
+        const ownerHash = socket.deserializeAttachment()?.ownerHash;
+        if (typeof ownerHash !== 'string' || !/^[a-f0-9]{64}$/.test(ownerHash)) { socket.close(1008, 'Invalid identity'); continue; }
+        if (!snapshots.has(ownerHash)) snapshots.set(ownerHash, JSON.stringify({ type: 'queue', data: await this.engine.view(ownerHash) }));
+        socket.send(snapshots.get(ownerHash)!);
+      } catch { try { socket.close(1011, 'Connection closed'); } catch { /* already closed */ } }
+    }
+  }
+
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer) {
+    if (message !== 'refresh') { socket.close(1008, 'Unsupported message'); return; }
+    const attachment = socket.deserializeAttachment();
+    if (!attachment?.ownerHash || (attachment.lastRefresh && Date.now() - attachment.lastRefresh < 2000)) return;
+    socket.serializeAttachment({ ...attachment, lastRefresh: Date.now() });
+    socket.send(JSON.stringify({ type: 'queue', data: await this.engine.view(attachment.ownerHash) }));
+  }
+
+  webSocketClose(socket: WebSocket, code: number) {
+    // Also complete the handshake explicitly for runtimes that have not enabled auto-close replies.
+    try { socket.close(code === 1005 || code === 1006 ? 1000 : code, 'Connection closed'); } catch { /* already closed */ }
+  }
+  webSocketError(socket: WebSocket) { try { socket.close(1011, 'Connection error'); } catch { /* already closed */ } }
 
   private async schedule() {
     const state = await this.engine.view('');
     const needsWork = state.configured && !state.paused && (state.activeId || state.jobs.some(job => job.state === 'queued'));
+    const current = await this.ctx.storage.getAlarm();
     if (needsWork) {
-      const current = await this.ctx.storage.getAlarm();
-      if (!current) await this.ctx.storage.setAlarm(Date.now() + 1000);
-    } else await this.ctx.storage.deleteAlarm();
+      if (!current || (!state.activeId && current > Date.now() + 2000)) await this.ctx.storage.setAlarm(Date.now() + 1000);
+    } else if (current) await this.ctx.storage.deleteAlarm();
   }
 
   async alarm() {
     // Schedule recovery before network work; a terminated invocation can resume safely.
-    await this.ctx.storage.setAlarm(Date.now() + 30_000);
+    await this.ctx.storage.setAlarm(Date.now() + 60_000);
     try { await this.engine.tick(); }
     finally { await this.schedule(); }
   }
@@ -45,6 +74,16 @@ export class AgentQueue extends DurableObject<Env> {
     try {
       const url = new URL(request.url);
       const ownerHash = request.headers.get('X-Visitor-Hash') ?? '';
+      if (request.method === 'GET' && url.pathname === '/api/queue/live') {
+        if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') throw new HttpError(426, '需要 WebSocket 连接。');
+        if (!/^[a-f0-9]{64}$/.test(ownerHash)) throw new HttpError(403, '浏览器身份无效。');
+        const [client, server] = Object.values(new WebSocketPair());
+        this.ctx.acceptWebSocket(server);
+        server.serializeAttachment({ ownerHash });
+        await this.schedule();
+        server.send(JSON.stringify({ type: 'queue', data: await this.engine.view(ownerHash) }));
+        return new Response(null, { status: 101, webSocket: client });
+      }
       if (request.method === 'GET' && url.pathname === '/api/queue') {
         await this.schedule();
         return Response.json(await this.engine.view(ownerHash));
@@ -94,6 +133,7 @@ export class AgentQueue extends DurableObject<Env> {
         await this.engine.admin(action, {
           sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
           confirmRemoteStopped: body.confirmRemoteStopped === true,
+          message: typeof body.message === 'string' ? textField(body, 'message', 1, 6000) : undefined,
         });
         await this.schedule();
         return Response.json({ ok: true });

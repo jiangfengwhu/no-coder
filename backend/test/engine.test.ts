@@ -120,6 +120,18 @@ describe('durable serial queue', () => {
     expect(provider.create).toHaveBeenCalledTimes(1);
   });
 
+  it('does not rewrite storage or notify subscribers for unchanged upstream state', async () => {
+    const changed = vi.fn();
+    engine = new QueueEngine(store, provider, config, () => clock, changed);
+    await submit(); await engine.tick(); await engine.tick();
+    const write = vi.spyOn(store, 'save');
+    const notifications = changed.mock.calls.length;
+    clock += 60_000;
+    await engine.tick();
+    expect(write).not.toHaveBeenCalled();
+    expect(changed).toHaveBeenCalledTimes(notifications);
+  });
+
   it('deduplicates retried submissions, and does not leak ownership tokens', async () => {
     const body = { title: '测试需求', description: '这是用于验证提交幂等性的需求。', acceptance: '', requestId: 'request-0000000001' };
     const ids = await Promise.all([engine.submit(body, 'secret-owner', 'ip'), engine.submit(body, 'secret-owner', 'ip')]);

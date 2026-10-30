@@ -1,8 +1,7 @@
-import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ExternalLink, Moon, Sun, SquareCode } from 'lucide-react';
-import type { QueueView } from '../../backend/src/control/types';
-import { loadQueue } from './api';
+import { useQueue } from './use-queue';
 import { RequestForm } from './components/RequestForm';
 import { TaskBoard } from './components/TaskBoard';
 import { Guide } from './components/Guide';
@@ -24,32 +23,14 @@ const pageTitles: Record<Page, [string, string]> = {
 
 function App() {
   const [tab, setTab] = useState<Page>('workbench');
-  const [data, setData] = useState<QueueView | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const { data, error, loading, connection, refresh } = useQueue();
   const [dark, setDark] = useState(() => {
     const stored = localStorage.getItem('nc-theme');
     return stored ? stored === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   });
-  const refreshing = useRef(false);
-  const refresh = useCallback(async () => {
-    if (refreshing.current) return;
-    refreshing.current = true;
-    setLoading(true);
-    try { setData(await loadQueue()); setError(''); }
-    catch (error) { setError((error as Error).message); }
-    finally { setLoading(false); refreshing.current = false; }
-  }, []);
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
   }, [dark]);
-  useEffect(() => {
-    void refresh();
-    const visible = () => { if (!document.hidden) void refresh(); };
-    const timer = window.setInterval(visible, 10_000);
-    document.addEventListener('visibilitychange', visible);
-    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', visible); };
-  }, [refresh]);
   const status = !data ? '连接中' : !data.configured ? '未连接 Jules' : data.paused ? '调度已暂停' : data.activeId ? '正在处理任务' : '队列空闲';
 
   return <Tabs value={tab} onValueChange={value => setTab(value as Page)} className="min-h-dvh gap-0">
@@ -78,13 +59,13 @@ function App() {
       {data?.paused && <Alert className="mb-6"><AlertTitle>调度已暂停</AlertTitle><AlertDescription>{data.pauseReason} 已提交需求会保留。</AlertDescription></Alert>}
       <TabsContent value="workbench" forceMount className="data-[state=inactive]:hidden">
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">
-          <TaskBoard data={data} loading={loading} error={error} onRefresh={refresh} />
+          <TaskBoard data={data} loading={loading} error={error} onRefresh={refresh} connection={connection} />
           <RequestForm inviteRequired={data?.inviteRequired ?? false} onSubmitted={() => { void refresh(); }} />
         </div>
       </TabsContent>
       <TabsContent value="guestbook"><Guestbook /></TabsContent>
       <TabsContent value="guide"><Guide /></TabsContent>
-      <TabsContent value="history"><TaskBoard data={data} loading={loading} error={error} onRefresh={refresh} historyOnly /></TabsContent>
+      <TabsContent value="history"><TaskBoard data={data} loading={loading} error={error} onRefresh={refresh} connection={connection} historyOnly /></TabsContent>
     </main>
     <footer className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-xs text-muted-foreground sm:px-6">
       <span>共享一个应用，按顺序实现每条需求。</span>

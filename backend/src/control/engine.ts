@@ -10,14 +10,18 @@ export class QueueEngine {
   jobs = new Map<string, Job>();
   private ready: Promise<void>;
   private tail: Promise<unknown> = Promise.resolve();
+  private persistedMeta = '';
+  private persistedJobs = new Map<string, string>();
 
-  constructor(private store: QueueStore, private providers: Providers, private env: Env, private now = () => Date.now()) {
+  constructor(private store: QueueStore, private providers: Providers, private env: Env, private now = () => Date.now(), private onChange?: () => void) {
     this.ready = this.load();
   }
 
   private async load() {
     this.meta = await this.store.loadMeta() ?? this.meta;
     this.jobs = new Map((await this.store.listJobs()).map(job => [job.id, job]));
+    this.persistedMeta = JSON.stringify(this.meta);
+    this.persistedJobs = new Map([...this.jobs.values()].map(job => [job.id, this.jobSignature(job)]));
   }
 
   exclusive<T>(fn: () => Promise<T>): Promise<T> {
@@ -27,14 +31,24 @@ export class QueueEngine {
   }
 
   private date() { return new Date(this.now()).toISOString(); }
+  private jobSignature(job: Job) { return JSON.stringify({ ...job, updatedAt: undefined }); }
 
   private async save(job?: Job, event?: string) {
     if (job) {
-      job.updatedAt = this.date();
       if (event) job.events = [...job.events, { at: this.date(), text: event }].slice(-30);
+    }
+    const metaSignature = JSON.stringify(this.meta);
+    const jobSignature = job ? this.jobSignature(job) : '';
+    const jobChanged = job && this.persistedJobs.get(job.id) !== jobSignature;
+    if (!jobChanged && this.persistedMeta === metaSignature) return;
+    if (job && jobChanged) {
+      job.updatedAt = this.date();
       this.jobs.set(job.id, job);
     }
-    await this.store.save(this.meta, job);
+    await this.store.save(this.meta, jobChanged ? job : undefined);
+    this.persistedMeta = metaSignature;
+    if (job && jobChanged) this.persistedJobs.set(job.id, jobSignature);
+    this.onChange?.();
   }
 
   private async pause(job: Job, message: string) {
@@ -121,10 +135,13 @@ export class QueueEngine {
     });
   }
 
-  admin(action: string, options: { sessionId?: string; confirmRemoteStopped?: boolean } = {}) {
+  admin(action: string, options: { sessionId?: string; confirmRemoteStopped?: boolean; message?: string } = {}) {
     return this.exclusive(async () => {
       const active = this.meta.activeId ? this.jobs.get(this.meta.activeId) : undefined;
-      if (action === 'pause') {
+      if (action === 'message_active') {
+        if (!active?.sessionId || !options.message?.trim()) throw new HttpError(409, '当前没有可接收消息的会话。');
+        await this.providers.message(active.sessionId, options.message.trim());
+      } else if (action === 'pause') {
         this.meta.paused = true;
         this.meta.pauseReason = '管理员已暂停调度。';
       } else if (action === 'resume') {

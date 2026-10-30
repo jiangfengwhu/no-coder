@@ -33,6 +33,10 @@ wrangler.jsonc          固定的 Worker、路由与非敏感配置
 
 前后端源码分目录，一次发布到同一个 Cloudflare Worker。前端静态资源由 Workers Static Assets 提供，后端处理 /api/*，队列保存在 Durable Object。
 
+队列页面使用休眠 WebSocket 接收实时更新，初次打开只读取一次 HTTP 快照，不再每 10 秒轮询。隐藏页面会断开连接，回到前台后重连；离线停止重试，连接失败按退避间隔重试。每分钟一次 WebSocket 心跳由运行时自动回应，不唤醒 Durable Object 的 JavaScript。
+
+适配 Workers 免费计划：使用 SQLite Durable Object；空队列和暂停时不设轮询 Alarm；有活动任务时全站共用每分钟一次上游状态检查；状态未变化不重复写入存储。WebSocket 建连、入站消息、活动任务查询和存储仍会消耗相应免费额度，并非零消耗。
+
 ## 开发与检查
 
 ```sh

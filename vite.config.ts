@@ -7,6 +7,6 @@ export default defineConfig({
   root: 'frontend',
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./frontend/src', import.meta.url)) } },
-  server: { proxy: { '/api': 'http://127.0.0.1:8787' } },
+  server: { proxy: { '/api': { target: 'http://127.0.0.1:8787', ws: true } } },
   build: { outDir: '../dist', emptyOutDir: true },
 });

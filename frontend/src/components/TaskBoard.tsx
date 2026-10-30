@@ -55,7 +55,7 @@ function JobRow({ job, onRefresh }: { job: PublicJob; onRefresh: () => void }) {
   </AccordionItem>;
 }
 
-export function TaskBoard({ data, loading, error, onRefresh, historyOnly = false }: { data: QueueView | null; loading: boolean; error: string; onRefresh: () => void; historyOnly?: boolean }) {
+export function TaskBoard({ data, loading, error, onRefresh, connection = '连接中', historyOnly = false }: { data: QueueView | null; loading: boolean; error: string; onRefresh: () => void; connection?: string; historyOnly?: boolean }) {
   const [filter, setFilter] = useState<'all' | 'waiting' | 'finished'>('all');
   const active = data?.jobs.find(job => job.id === data.activeId);
   const waiting = data?.jobs.filter(job => job.state === 'queued') ?? [];
@@ -76,7 +76,7 @@ export function TaskBoard({ data, loading, error, onRefresh, historyOnly = false
       {!historyOnly && <div className="flex flex-wrap items-center gap-1 border-y bg-muted/30 px-4 py-2 sm:px-5" aria-label="筛选需求">{([['all', '全部'], ['waiting', `排队中 ${waiting.length}`], ['finished', '已结束']] as const).map(([value, label]) => <Button key={value} size="sm" variant={filter === value ? 'secondary' : 'ghost'} aria-pressed={filter === value} onClick={() => setFilter(value)} className="h-7 text-xs shadow-none">{label}</Button>)}</div>}
       {error && <div role="alert" className="flex items-center justify-between gap-3 px-5 py-4 text-sm text-destructive">{error}<Button variant="outline" size="sm" onClick={onRefresh}>重试</Button></div>}
       {loading && !data ? <CardContent className="space-y-3 pt-6"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></CardContent> : filtered.length ? <Accordion type="single" collapsible>{filtered.map(job => <JobRow key={job.id} job={job} onRefresh={onRefresh} />)}</Accordion> : <div className="px-5 py-16 text-center"><p className="text-sm font-medium">{historyOnly ? '暂无已结束任务' : filter === 'waiting' ? '暂无排队需求' : filter === 'finished' ? '暂无已结束任务' : '暂无需求'}</p><p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-muted-foreground">{historyOnly ? '任务完成或失败后，会在这里保留记录。' : '提交一条需求后，可以在这里查看排队位置和处理结果。'}</p></div>}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground sm:px-6"><span>按提交顺序处理</span><span>{error ? '同步失败' : data ? '每 10 秒同步' : '正在连接'}</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground sm:px-6"><span>按提交顺序处理</span><span>{error ? '同步失败' : connection}</span></div>
     </Card>
     {!historyOnly && <p className="px-1 text-xs leading-6 text-muted-foreground">每条需求都从最新已发布版本开始。上一条任务发布完成后，才会启动下一条。</p>}
   </div>;
