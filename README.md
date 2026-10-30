@@ -2,6 +2,10 @@
 
 用户共同维护一个 Web 应用的实验：提交需求 → 串行创建 Jules session → 验证 PR → 合并 → 部署 Cloudflare → 校验线上版本 → 下一条需求。
 
+当前部署：https://nocoder-lab.809740942.workers.dev
+
+首次交付已部署入口和持久队列；Jules API Key、GitHub 令牌及 Jules Source 尚需配置，真实生成闭环尚未验收。管理密钥已通过初始化脚本配置，本机副本在 Git 忽略的 `.dev.vars` 中。
+
 ## 项目结构
 
 ```text
@@ -73,6 +77,8 @@ npx wrangler secret put QUEUE_ADMIN_TOKEN
 ```
 
 设置一个足够长的随机值。页面底部“管理”可使用此值暂停、恢复、批准可选的人工合并，或处理未确认 session。管理密钥只保存在打开的管理窗口内，不写入浏览器存储。可选 `SUBMISSION_TOKEN` 用于设置需求提交邀请码。
+
+也可运行 `npm run setup:admin`，自动生成管理密钥、存入本机 Git 忽略的 `.dev.vars` 并上传 Cloudflare。重复运行会复用本地已有密钥，不会自动轮换。
 
 ### 4. GitHub 自动发布
 

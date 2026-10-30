@@ -12,7 +12,8 @@
     "build": "vite build",
     "check": "npm run typecheck && npm test && npm run build",
     "deploy": "npm run build && wrangler deploy",
-    "deploy:check": "wrangler deploy --dry-run --outdir .worker-build"
+    "deploy:check": "wrangler deploy --dry-run --outdir .worker-build",
+    "setup:admin": "node scripts/bootstrap-admin.mjs"
   },
   "dependencies": {
     "react": "^19.2.0",
