@@ -48,7 +48,10 @@ export class AgentQueue extends DurableObject<Env> {
     socket.send(JSON.stringify({ type: 'queue', data: await this.engine.view(attachment.ownerHash) }));
   }
 
-  webSocketClose() { /* Runtime completes close handshakes; no timer keeps this object awake. */ }
+  webSocketClose(socket: WebSocket, code: number) {
+    // Also complete the handshake explicitly for runtimes that have not enabled auto-close replies.
+    try { socket.close(code === 1005 || code === 1006 ? 1000 : code, 'Connection closed'); } catch { /* already closed */ }
+  }
   webSocketError(socket: WebSocket) { try { socket.close(1011, 'Connection error'); } catch { /* already closed */ } }
 
   private async schedule() {
