@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local real integrations. Do not commit .dev.vars.
+JULES_API_KEY=
+GITHUB_TOKEN=
+QUEUE_ADMIN_TOKEN=
+# Optional invite code; when set, visitors must enter it to submit a request.
+SUBMISSION_TOKEN=
