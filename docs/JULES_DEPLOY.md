@@ -12,6 +12,15 @@
 
 ## 会话环境
 
+### 已备好的占位配置
+
+- `.env`：本机发布进程的实际配置，已被 Git 忽略。填写 `CLOUDFLARE_API_TOKEN`；账户 ID 和网站地址已填好。`npm run deploy:jules` 会自动读取此文件。
+- `.env.example`：可提交的空白模板。Jules VM 中如采用文件配置，可从它创建 `.env` 并通过受控方式填写凭据；真实 `.env` 不会随 Git 仓库进入 Jules。
+- `.dev.vars`：本机 Worker 的实际密钥。填写 `JULES_API_KEY` 和 `GITHUB_TOKEN`，已有的 `QUEUE_ADMIN_TOKEN` 请保留。
+- `wrangler.jsonc`：在 `vars.JULES_SOURCE` 的空字符串中填写真实仓库 source 名称。这个 ID 可以随代码提交。
+
+本机配置不会自动成为线上配置。线上 Worker 的 `JULES_API_KEY`、`GITHUB_TOKEN` 需要在 Cloudflare 的 Worker Settings 中以 Secret 设置，或通过 `npx wrangler secret put` 上传。Jules VM 的 Cloudflare 发布凭据需要在该执行环境配置。
+
 Jules 在 Ubuntu VM 中执行任务。仓库环境的初始化命令可使用：
 
 ```bash

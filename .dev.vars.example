@@ -1,6 +1,8 @@
-# Copy to .dev.vars for local real integrations. Do not commit .dev.vars.
+# Copy to .dev.vars for local Worker integrations. Do not commit .dev.vars.
+# Fill the three values below; empty values keep execution disabled.
 JULES_API_KEY=
 GITHUB_TOKEN=
 QUEUE_ADMIN_TOKEN=
+# JULES_SOURCE is a repository source ID, configured in wrangler.jsonc.
 # Optional invite code; when set, visitors must enter it to submit a request.
 SUBMISSION_TOKEN=

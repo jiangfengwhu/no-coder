@@ -18,6 +18,8 @@
     "GITHUB_OWNER": "jiangfengwhu",
     "GITHUB_REPO": "no-coder",
     "GITHUB_BRANCH": "main",
+    // Fill the exact source name returned by the Jules Sources API.
+    // Example format only: sources/your-repository-source-id
     "JULES_SOURCE": "",
     "DEPLOY_WORKFLOW": "deploy.yml",
     "DEPLOY_MODE": "jules",

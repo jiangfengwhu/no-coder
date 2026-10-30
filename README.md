@@ -4,6 +4,8 @@
 
 当前部署：https://nocoder-lab.809740942.workers.dev
 
+占位配置已备好：本机发布凭据填 `.env`（模板 `.env.example`），本机 Worker 密钥填 `.dev.vars`（模板 `.dev.vars.example`），仓库 source 填 `wrangler.jsonc` 的 `vars.JULES_SOURCE`。实际密钥文件均被 Git 忽略。详见 [配置位置](docs/JULES_DEPLOY.md#已备好的占位配置)。
+
 首次交付已部署入口和持久队列；Jules API Key、GitHub 令牌及 Jules Source 尚需配置，真实生成闭环尚未验收。管理密钥已通过初始化脚本配置，本机副本在 Git 忽略的 `.dev.vars` 中。
 
 ## 项目结构
