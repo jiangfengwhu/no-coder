@@ -8,7 +8,7 @@ function App() {
     const stored = localStorage.getItem('nc-theme');
     document.documentElement.classList.toggle('dark', stored ? stored === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
   }, []);
-  return <><iframe className="canvas-frame" title="共享画板" src="https://nocoder-canvas.809740942.workers.dev/" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" /><ControlShell /></>;
+  return <><iframe className="canvas-frame" title="共享画板" src="https://nocoder-canvas.297782.xyz/" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" /><ControlShell /></>;
 }
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
