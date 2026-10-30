@@ -3,7 +3,7 @@ import { digest } from './control/security';
 import type { Env } from './control/types';
 export { AgentQueue } from './control/queue';
 
-const controlPath = (path: string) => path === '/api/queue' || path === '/api/requests' || path === '/api/admin' || path === '/api/admin/check-tokens' || path === '/api/deploy/credentials' || /^\/api\/requests\/[\w-]+\/feedback$/.test(path);
+const controlPath = (path: string) => path === '/api/queue' || path === '/api/queue/live' || path === '/api/requests' || path === '/api/admin' || path === '/api/admin/check-tokens' || path === '/api/deploy/credentials' || /^\/api\/requests\/[\w-]+\/feedback$/.test(path);
 
 export default {
   async fetch(request, env) {
@@ -12,6 +12,9 @@ export default {
       return Response.json({ ok: true, commit: env.APP_COMMIT || 'local', tree: env.APP_TREE || '', jobId: env.APP_JOB || '' }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (controlPath(url.pathname)) {
+      if (url.pathname === '/api/queue/live' && request.headers.get('Origin') !== url.origin) {
+        return Response.json({ error: '请从本站页面建立实时连接。' }, { status: 403 });
+      }
       if (request.method !== 'GET' && url.pathname !== '/api/deploy/credentials' && request.headers.get('Origin') !== url.origin) {
         return Response.json({ error: '请从本站页面提交请求。' }, { status: 403 });
       }
@@ -22,7 +25,9 @@ export default {
       headers.set('X-IP-Hash', await digest(request.headers.get('CF-Connecting-IP') ?? 'local'));
       const stub = env.AGENT_QUEUE.get(env.AGENT_QUEUE.idFromName('global-v1'));
       const upstream = await stub.fetch(new Request(request, { headers }));
-      const response = new Response(upstream.body, upstream);
+      const response = upstream.status === 101
+        ? new Response(null, { status: 101, headers: upstream.headers, webSocket: upstream.webSocket })
+        : new Response(upstream.body, upstream);
       response.headers.set('Cache-Control', 'no-store');
       response.headers.set('X-Content-Type-Options', 'nosniff');
       if (!existing) response.headers.append('Set-Cookie', `nc_visitor=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000${url.protocol === 'https:' ? '; Secure' : ''}`);
