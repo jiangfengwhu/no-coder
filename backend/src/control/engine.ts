@@ -144,6 +144,25 @@ export class QueueEngine {
         active.state = 'running';
         this.meta.paused = false;
         this.meta.pauseReason = undefined;
+      } else if (action === 'retry_active') {
+        if (!active || active.state !== 'creating' || active.sessionId) throw new HttpError(409, '仅能重试尚未确认创建结果的任务。');
+        // Reconcile the entire bounded remote list before permitting another non-idempotent POST.
+        const remote = await this.providers.reconcile(active);
+        if (remote) {
+          const id = remote.name?.match(/^sessions\/([\w-]+)$/)?.[1];
+          if (!id) throw new HttpError(409, '远端会话 ID 无法解析，未启动新的会话。');
+          active.sessionId = id;
+          active.sessionUrl = `https://jules.google.com/session/${id}`;
+          active.state = 'running';
+          active.message = '已找回已有 Jules 会话，继续原任务。';
+        } else {
+          active.state = 'queued';
+          active.message = '已核对远端没有此任务会话，重新排入队列。';
+          this.meta.activeId = null;
+        }
+        active.startedAt = undefined;
+        this.meta.paused = false;
+        this.meta.pauseReason = undefined;
       } else if (action === 'fail_active') {
         if (!active || !options.confirmRemoteStopped) throw new HttpError(409, '请先确认远端 session 已停止且没有待处理合并或部署。');
         await this.finish(active, 'failed', '管理员确认远端已停止，已结束此任务。');

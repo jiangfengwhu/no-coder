@@ -30,6 +30,15 @@ describe('release gates and API boundaries', () => {
     expect(body.automationMode).toBe('AUTO_CREATE_PR');
   });
 
+  it('searches later pages before declaring a remote session absent', async () => {
+    const fetcher = vi.fn().mockImplementation(async (url: string) => url.includes('pageToken=next')
+      ? json({ sessions: [{ name: 'sessions/existing', title: '[NC-original] Task', state: 'IN_PROGRESS' }] })
+      : json({ sessions: [], nextPageToken: 'next' }));
+    const result = await new LiveProviders(env, fetcher as typeof fetch).reconcile({ id: 'original' } as Job);
+    expect(result?.name).toBe('sessions/existing');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it('discovers the repository source automatically across pages', async () => {
     const fetcher = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes('/sessions')) return json({ name: 'sessions/test', state: 'QUEUED' });

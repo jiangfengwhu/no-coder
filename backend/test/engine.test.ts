@@ -164,6 +164,31 @@ describe('durable serial queue', () => {
     expect(engine.meta.paused).toBe(true);
   });
 
+  it('retries the original task only after an administrator confirms remote absence', async () => {
+    const id = await submit();
+    vi.mocked(provider.create).mockRejectedValueOnce(new TypeError('lost response'));
+    await engine.tick();
+    await engine.admin('retry_active');
+    expect(provider.reconcile).toHaveBeenCalledOnce();
+    expect(engine.jobs.get(id)?.state).toBe('queued');
+    expect(engine.meta.paused).toBe(false);
+    await engine.tick();
+    expect(provider.create).toHaveBeenCalledTimes(2);
+    expect(engine.meta.activeId).toBe(id);
+    expect(engine.jobs.size).toBe(1);
+  });
+
+  it('reuses an existing remote session instead of creating another on retry', async () => {
+    const id = await submit();
+    vi.mocked(provider.create).mockRejectedValueOnce(new TypeError('lost response'));
+    await engine.tick();
+    vi.mocked(provider.reconcile).mockResolvedValue({ name: 'sessions/existing', state: 'IN_PROGRESS' });
+    await engine.admin('retry_active');
+    expect(engine.jobs.get(id)?.sessionId).toBe('existing');
+    expect(engine.jobs.get(id)?.state).toBe('running');
+    expect(provider.create).toHaveBeenCalledOnce();
+  });
+
   it('finds a remotely created session after losing the original response', async () => {
     const id = await submit();
     vi.mocked(provider.create).mockRejectedValue(new TypeError('connection reset'));

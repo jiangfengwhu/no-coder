@@ -113,10 +113,19 @@ export class LiveProviders implements Providers {
   }
 
   async reconcile(job: Job) {
-    const result = await this.request<{ sessions?: Session[] }>('Jules', 'sessions?pageSize=100');
-    const matches = (result.sessions ?? []).filter(session => session.title?.startsWith(`[NC-${job.id}]`));
-    if (matches.length > 1) throw new Error('发现多个同标记的 Jules session，需要管理员核对。');
-    return matches[0];
+    let token = '';
+    let match: Session | undefined;
+    for (let page = 0; page < 20; page++) {
+      const result = await this.request<{ sessions?: Session[]; nextPageToken?: string }>('Jules', `sessions?pageSize=100${token ? `&pageToken=${encodeURIComponent(token)}` : ''}`);
+      for (const session of result.sessions ?? []) {
+        if (!session.title?.startsWith(`[NC-${job.id}]`)) continue;
+        if (match) throw new Error('发现多个同标记的 Jules session，需要管理员核对。');
+        match = session;
+      }
+      token = result.nextPageToken ?? '';
+      if (!token) return match;
+    }
+    throw new Error('远端会话数量超出自动核对范围，无法安全重试。');
   }
 
   session(id: string) { return this.request<Session>('Jules', `sessions/${encodeURIComponent(id)}`); }
