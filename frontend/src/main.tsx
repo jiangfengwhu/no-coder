@@ -6,15 +6,17 @@ import { RequestForm } from './components/RequestForm';
 import { TaskBoard } from './components/TaskBoard';
 import { Guide } from './components/Guide';
 import { AdminDialog } from './components/AdminDialog';
+import { Guestbook } from './components/Guestbook';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import './styles.css';
 
-type Page = 'workbench' | 'guide' | 'history';
+type Page = 'workbench' | 'guestbook' | 'guide' | 'history';
 const pageTitles: Record<Page, [string, string]> = {
   workbench: ['工作台', '提交需求，查看实现与发布进度。'],
+  guestbook: ['留言板', '畅所欲言，留下你的想法。'],
   guide: ['使用说明', '了解需求怎样从队列进入已发布版本。'],
   history: ['实验记录', '查看已经结束的任务和发布结果。'],
 };
@@ -38,6 +40,7 @@ function App() {
         <a href="/" aria-label="noCoder 首页" className="flex shrink-0 items-center gap-2 text-base font-semibold tracking-tight"><SquareCode className="size-5" strokeWidth={1.6} />noCoder</a>
         <TabsList variant="line" aria-label="主导航" className="order-3 h-9 w-full justify-start gap-3 p-0 sm:order-none sm:w-auto">
           <TabsTrigger value="workbench" className="flex-none px-1">工作台</TabsTrigger>
+          <TabsTrigger value="guestbook" className="flex-none px-1">留言板</TabsTrigger>
           <TabsTrigger value="guide" className="flex-none px-1">使用说明</TabsTrigger>
           <TabsTrigger value="history" className="flex-none px-1">实验记录</TabsTrigger>
         </TabsList>
@@ -60,6 +63,7 @@ function App() {
           <RequestForm inviteRequired={data?.inviteRequired ?? false} onSubmitted={() => { void refresh(); }} />
         </div>
       </TabsContent>
+      <TabsContent value="guestbook"><Guestbook /></TabsContent>
       <TabsContent value="guide"><Guide /></TabsContent>
       <TabsContent value="history"><TaskBoard data={data} loading={loading} error={error} onRefresh={refresh} connection={connection} historyOnly /></TabsContent>
     </main>
