@@ -6,6 +6,7 @@ describe('Jules deployment script', () => {
     expect(() => deploymentOptions({})).toThrow('CLOUDFLARE_API_TOKEN');
     expect(deploymentOptions({}, ['--dry-run']).dryRun).toBe(true);
     expect(deploymentOptions({}, ['--local-auth']).localAuth).toBe(true);
+    expect(deploymentOptions({ NC_DEPLOY_TOKEN: 'task-token', NC_JOB_ID: '12345678-1234-1234-1234-123456789abc' }).jobId).toBe('12345678-1234-1234-1234-123456789abc');
   });
 
   it('rejects malformed or credential-bearing URLs and task IDs', () => {

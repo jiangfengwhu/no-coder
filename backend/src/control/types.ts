@@ -57,11 +57,12 @@ export interface Env {
   GITHUB_TOKEN?: string;
   QUEUE_ADMIN_TOKEN?: string;
   SUBMISSION_TOKEN?: string;
+  CLOUDFLARE_API_TOKEN?: string;
   GITHUB_OWNER: string;
   GITHUB_REPO: string;
   GITHUB_BRANCH: string;
-  JULES_SOURCE: string;
-  DEPLOY_WORKFLOW: string;
+  JULES_SOURCE?: string;
+  DEPLOY_WORKFLOW?: string;
   AUTO_MERGE: string;
   APP_COMMIT: string;
   APP_TREE?: string;
@@ -81,8 +82,13 @@ export class HttpError extends Error {
 }
 
 export function missingConfig(env: Env): string[] {
-  return ['JULES_API_KEY', 'GITHUB_TOKEN', 'QUEUE_ADMIN_TOKEN', 'GITHUB_OWNER', 'GITHUB_REPO', 'JULES_SOURCE']
-    .filter(key => !env[key as keyof Env]);
+  const required = ['JULES_API_KEY', 'GITHUB_TOKEN', 'QUEUE_ADMIN_TOKEN', 'GITHUB_OWNER', 'GITHUB_REPO'];
+  if (env.DEPLOY_MODE === 'jules') required.push('CLOUDFLARE_API_TOKEN');
+  return required.filter(key => !configuredValue(env[key as keyof Env]));
+}
+
+export function configuredValue(value: unknown): value is string {
+  return typeof value === 'string' && Boolean(value.trim()) && !/^(REPLACE_|PLACEHOLDER|__SET_|<)/i.test(value.trim());
 }
 
 export function isTerminal(job: Job): boolean {

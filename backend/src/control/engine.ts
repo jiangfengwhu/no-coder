@@ -1,5 +1,6 @@
 import { HttpError, isTerminal, missingConfig, type Env, type Job, type PublicJob, type QueueMeta, type QueueStore, type QueueView } from './types';
 import { prNumberFromUrl, UpstreamError, type Providers } from './providers';
+import { deploymentLease, secretMatches } from './security';
 
 const MAX_WAITING = 100;
 const MAX_RUNTIME = 2 * 60 * 60 * 1000;
@@ -107,6 +108,19 @@ export class QueueEngine {
     });
   }
 
+  deploymentCredentials(jobId: string, token: string) {
+    return this.exclusive(async () => {
+      const job = this.jobs.get(jobId);
+      if (!job || this.meta.activeId !== jobId || this.meta.paused || !['creating', 'running', 'needs_input', 'checking'].includes(job.state)) {
+        throw new HttpError(403, '此任务当前没有发布权限。');
+      }
+      if (missingConfig(this.env).length) throw new HttpError(503, '请先在 Cloudflare Worker 中替换必要的 Secret 占位值。');
+      const expected = await deploymentLease(jobId, this.env.QUEUE_ADMIN_TOKEN!);
+      if (!await secretMatches(token, expected)) throw new HttpError(403, '任务发布授权无效。');
+      return { apiToken: this.env.CLOUDFLARE_API_TOKEN, accountId: '9f38af437152e2268766afd8fdb6cf72', appUrl: this.env.APP_URL || 'https://nocoder.297782.xyz' };
+    });
+  }
+
   admin(action: string, options: { sessionId?: string; confirmRemoteStopped?: boolean } = {}) {
     return this.exclusive(async () => {
       const active = this.meta.activeId ? this.jobs.get(this.meta.activeId) : undefined;
@@ -169,7 +183,11 @@ export class QueueEngine {
         job.state = 'running';
         await this.save(job, 'Jules 已接收任务。');
       } catch (error) {
-        if (error instanceof UpstreamError && error.status >= 400 && error.status < 500 && error.status !== 408) {
+        if (error instanceof HttpError) {
+          job.state = 'queued';
+          this.meta.activeId = null;
+          await this.pause(job, error.message);
+        } else if (error instanceof UpstreamError && error.status >= 400 && error.status < 500 && error.status !== 408) {
           await this.finish(job, 'failed', error.message);
         } else await this.pause(job, '创建 session 的结果未确认。恢复后会先核对远端，避免重复启动。');
       }

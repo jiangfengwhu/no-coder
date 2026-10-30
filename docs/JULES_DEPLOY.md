@@ -1,87 +1,58 @@
-# Jules 会话内发布
+# 配置与 Jules 发布
 
-本仓库的前后端代码分开存放，构建后部署到同一个 Cloudflare Worker。
+所有需要人工填写的密钥，统一在 Cloudflare → Workers & Pages → nocoder-lab → Settings → Variables and Secrets 修改。
 
-| 源码 | 构建结果 | Cloudflare 上的运行方式 |
+## 需要替换的 Secret
+
+| 名称 | 用途 | 初始状态 |
 | --- | --- | --- |
-| `frontend/` | Vite 生成 `dist/` | Workers Static Assets 提供页面、JS 和 CSS |
-| `backend/src/index.ts` | Wrangler 打包 ES Module Worker | `/api/*` 进入后端 |
-| `backend/src/control/queue.ts` | 同一 Worker 的 `AgentQueue` 类 | Durable Object 保存队列和调度状态 |
+| JULES_API_KEY | 后端创建及查询 Jules 任务 | REPLACE_WITH_JULES_API_KEY |
+| GITHUB_TOKEN | 验证、合并本仓库 PR | REPLACE_WITH_GITHUB_TOKEN |
+| CLOUDFLARE_API_TOKEN | Jules 通过 Wrangler 发布此应用 | REPLACE_WITH_CLOUDFLARE_API_TOKEN |
+| QUEUE_ADMIN_TOKEN | 网页底部调度管理 | 已设置真实随机密钥，可保持不变 |
 
-不需要另建前端站点或 Node.js 服务器，不需要上传源码压缩包。Wrangler 将构建后的静态资源与后端模块一次上传。`wrangler.jsonc` 中的 `assets.directory`、`main` 和 Durable Object binding 已配置。
+不需要设置账号 ID、GitHub 用户、仓库名、分支、Jules Source、部署模式或网站地址。非敏感配置固定在仓库中。Jules Source 按 jiangfengwhu/no-coder 自动查找，需先在 Jules 授权仓库。
 
-## 会话环境
+占位值会被识别为未配置，不会触发创建任务或发布。替换 Secret 并应用到 Worker 后，打开网站队列页即可重新检查配置并唤醒待处理队列。
 
-### 已备好的占位配置
+GITHUB_TOKEN 仅授权本仓库：Contents 和 Pull requests 读写，Checks、Commit statuses、Actions 读取。CLOUDFLARE_API_TOKEN 使用 Edit Cloudflare Workers 权限并限制到当前部署账户；本仓库包含路由，还需要对应 Zone 的 Workers Routes 编辑与 Zone 读取权限。
 
-- `.env`：本机发布进程的实际配置，已被 Git 忽略。填写 `CLOUDFLARE_API_TOKEN`；账户 ID 和网站地址已填好。`npm run deploy:jules` 会自动读取此文件。
-- `.env.example`：可提交的空白模板。Jules VM 中如采用文件配置，可从它创建 `.env` 并通过受控方式填写凭据；真实 `.env` 不会随 Git 仓库进入 Jules。
-- `.dev.vars`：本机 Worker 的实际密钥。填写 `JULES_API_KEY` 和 `GITHUB_TOKEN`，已有的 `QUEUE_ADMIN_TOKEN` 请保留。
-- `wrangler.jsonc`：在 `vars.JULES_SOURCE` 的空字符串中填写真实仓库 source 名称。这个 ID 可以随代码提交。
+## 域名与 DNS
 
-本机配置不会自动成为线上配置。线上 Worker 的 `JULES_API_KEY`、`GITHUB_TOKEN` 需要在 Cloudflare 的 Worker Settings 中以 Secret 设置，或通过 `npx wrangler secret put` 上传。Jules VM 的 Cloudflare 发布凭据需要在该执行环境配置。
+正式域名：https://nocoder.297782.xyz
 
-Jules 在 Ubuntu VM 中执行任务。仓库环境的初始化命令可使用：
+备用及凭据入口：https://nocoder-lab.809740942.workers.dev
 
-```bash
-set +x
-export NVM_DIR="$HOME/.nvm"
-[ ! -s "$NVM_DIR/nvm.sh" ] || . "$NVM_DIR/nvm.sh"
-nvm install 24
-nvm use 24
-npm ci
-```
+Worker 路由为 nocoder.297782.xyz/*，属于当前账户的 297782.xyz 区域。DNS 由用户配置，必须开启 Cloudflare 代理。本项目不自动创建或修改 DNS 记录。备用 workers.dev 地址用于 DNS 配置前验收及稳定的任务凭据入口。
 
-根据实际环境选择 Node.js 的安装方式；本项目推荐 Node.js 24。
+## 前后端如何部署
 
-发布进程需要以下环境变量：
+- frontend/ 由 Vite 构建到 dist/，通过 Workers Static Assets 提供页面和资源。
+- backend/src/index.ts 由 Wrangler 打包为 Worker，处理 /api/*。
+- AgentQueue Durable Object 保存唯一串行队列，重新部署不会清空队列。
+- npm run deploy:jules 会检查、构建、打包并一次上传前后端，随后核对线上 commit、Git tree 和任务 UUID。
 
-| 变量 | 要求 |
-| --- | --- |
-| `CLOUDFLARE_API_TOKEN` | 必需。可编辑实际部署账户 Worker 的 API Token |
-| `CLOUDFLARE_ACCOUNT_ID` | 可选。脚本默认使用当前已部署账户 ID |
-| `APP_URL` | 可选。默认 `https://nocoder-lab.809740942.workers.dev` |
-| `NC_JOB_ID` | 排队任务必需。从该次会话指令中取得任务 UUID |
+## Jules 会话中的命令
 
-这些变量必须在执行部署命令的进程环境中可用。本脚本不假定初始化脚本的 `export` 会跨 VM 阶段保留。不要把 API Token 写到仓库、会话提示词或日志中；缺少凭据时应请求配置运行环境。Cloudflare Token 是发布凭据，不等于 `JULES_API_KEY`。Worker 自己的业务密钥仍保存在 Cloudflare Secrets，不打包到前端。
-
-## 执行顺序
-
-1. 实现需求，运行必要检查，将源码提交为本地 Git commit。工作目录必须干净。
-2. 执行会话中的命令（将 UUID 替换为该任务实际值）：
+后端自动给每条任务附加发布指令：
 
 ```bash
-NC_JOB_ID=任务实际UUID npm run deploy:jules
+NC_JOB_ID=本次任务UUID NC_DEPLOY_TOKEN=本次任务授权 npm run deploy:jules
 ```
 
-脚本执行：类型检查 → 测试 → Vite 构建前端 → Wrangler 打包后端及静态资源 → 上传 Cloudflare → 请求 `/api/health`，核对 commit、Git tree 与任务 UUID。任一步失败都以非零状态结束。`--keep-vars` 保留远端的其他普通变量；配置文件中同名变量依然以仓库值为准。
+这两个值由提示词自动提供，不需要人工维护。任务专用授权由管理密钥签名，只有当前活动、未暂停的任务可以换取发布凭据；排队和已结束任务无法使用。Cloudflare Token 仅在脚本进程内存中取得并传给 Wrangler，不写入源码、文件或日志。任务授权也不得写入 PR 或报告。
 
-3. 只有脚本输出 `Verified deployment` 才能报告部署成功。非敏感部署记录保存在 Git 忽略的 `.worker-build/deployment.json`。
-4. 提交 PR 到 `main`，在说明中给出发布网址、commit、tree 和检查结果。不要自己合并。
-5. 发布后如有源码变化，重新提交并重新执行发布脚本。Jules 自动调整 commit 元信息时，队列按 Git tree 确认代码内容一致。
+1. Jules 实现需求并提交源码，保持工作目录干净。
+2. 执行该次任务的发布命令，发布前再次检查活动任务位置。
+3. 只有输出 Verified deployment 才能报告成功。
+4. 提交 PR，队列核对线上与 PR 代码树一致后合并，再确认主分支一致，才处理下一项。
 
-只验证打包、不上传：
+此模式先发布、再合并。失败或结果不明时暂停队列，不自动回滚。恢复前需要确认线上与仓库一致。
 
-```bash
-npm run deploy:jules -- --dry-run
-```
+只验证打包：npm run deploy:jules -- --dry-run
 
-在本机使用已有 Wrangler OAuth 登录发布（无需在本机再复制 Token）：
+本机维护可复用已有 Wrangler 登录：npm run deploy:jules -- --local-auth
 
-```bash
-npm run deploy:jules -- --local-auth
-```
+Jules 环境只需 Node.js 24、Git 和 npm ci 安装好的依赖。初始化可使用 nvm install 24、nvm use 24、npm ci。所有持久密钥仍配置在 Worker 中。
 
-## 给手动 Jules 会话的指令
-
-仓库页面提交的任务会自动附带发布指令。手工打开 Jules 会话时，可复制下面这段，并填写真实任务或说明是独立维护任务：
-
-> 阅读 AGENTS.md 和 docs/JULES_DEPLOY.md。完成需求后先提交源码，然后在当前会话执行 npm run deploy:jules，将 frontend/ 的构建产物和 backend/ Worker 一次发布到现有 Cloudflare Worker。排队任务使用提示词给出的 NC_JOB_ID。只使用执行环境中的 CLOUDFLARE_API_TOKEN。若缺少凭据，说明缺少的变量并等待配置。发布后确认线上健康接口对应本次代码，报告 URL、commit、tree，再产出 PR，不要自行合并。不要仅给出部署建议，也不要在检查失败时报告成功。
-
-## 队列与发布时机
-
-默认 `DEPLOY_MODE=jules`。当前任务始终占用唯一队列位置，脚本上传前会核对任务仍为当前活动项且队列未暂停。队列读取真实线上版本，确认其任务标记与 PR 的代码树一致后才合并；合并后的代码树也必须一致，才能处理下一项。
-
-**这是在 Jules 会话中先部署、再合并的实验模式。** 因此，Jules 失败、没有 PR 或 PR 被关闭时，即使会话已经结束也会暂停队列，要求核对线上代码是否已变化。没有自动回滚；管理员应先恢复源码与线上一致，再释放任务位置。
-
-GitHub Actions 的 `validate.yml` 仍负责 PR 检查。`deploy.yml` 仅供手动触发，不会在合并后重复发布。选择此模式不需要给 GitHub Actions 再配置 Cloudflare 发布 Token，但 Jules 的执行环境必须能取得它。
+本地 .env、.dev.vars 仅供独立开发兼容使用，不再是上线必填配置。请勿把真实密钥提交到仓库。

@@ -7,8 +7,8 @@ export function deploymentOptions(env, args = []) {
   const dryRun = args.includes('--dry-run');
   const localAuth = args.includes('--local-auth');
   if (args.some(arg => !['--dry-run', '--local-auth'].includes(arg))) throw new Error('Supported options: --dry-run, --local-auth');
-  if (!dryRun && !localAuth && !env.CLOUDFLARE_API_TOKEN) throw new Error('Missing CLOUDFLARE_API_TOKEN in the Jules environment. Do not put the token in source code or session messages.');
-  const appUrl = new URL(env.APP_URL || 'https://nocoder-lab.809740942.workers.dev');
+  if (!dryRun && !localAuth && !env.CLOUDFLARE_API_TOKEN && !(env.NC_DEPLOY_TOKEN && env.NC_JOB_ID)) throw new Error('Missing task authorization for the Worker credential broker (or CLOUDFLARE_API_TOKEN for manual use).');
+  const appUrl = new URL(env.APP_URL || 'https://nocoder.297782.xyz');
   if (appUrl.protocol !== 'https:' || appUrl.username || appUrl.password || appUrl.search || appUrl.hash || appUrl.pathname !== '/') {
     throw new Error('APP_URL must be the HTTPS origin of the production Worker.');
   }
@@ -32,6 +32,19 @@ async function main() {
   const commit = git('rev-parse', 'HEAD');
   const tree = git('rev-parse', 'HEAD^{tree}');
   const env = { ...process.env, CLOUDFLARE_ACCOUNT_ID: options.accountId, CI: 'true' };
+  if (!options.dryRun && !options.localAuth && process.env.NC_DEPLOY_TOKEN) {
+    const response = await fetch('https://nocoder-lab.809740942.workers.dev/api/deploy/credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.NC_DEPLOY_TOKEN}` },
+      body: JSON.stringify({ jobId: options.jobId }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`Worker refused deployment credentials (HTTP ${response.status}). Check the active task and Worker Secrets.`);
+    const credentials = await response.json();
+    if (typeof credentials.apiToken !== 'string' || !credentials.apiToken || /^REPLACE_/i.test(credentials.apiToken)) throw new Error('Cloudflare deployment Secret has not been configured on the Worker.');
+    env.CLOUDFLARE_API_TOKEN = credentials.apiToken;
+    // The credential is only held in process memory and passed to Wrangler's environment.
+  }
   async function run(executable, args) {
     const child = spawn(executable, args, { cwd: root, env, stdio: 'inherit', windowsHide: true });
     const code = await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', resolve); });

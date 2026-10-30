@@ -3,7 +3,7 @@ import { digest } from './control/security';
 import type { Env } from './control/types';
 export { AgentQueue } from './control/queue';
 
-const controlPath = (path: string) => path === '/api/queue' || path === '/api/requests' || path === '/api/admin' || /^\/api\/requests\/[\w-]+\/feedback$/.test(path);
+const controlPath = (path: string) => path === '/api/queue' || path === '/api/requests' || path === '/api/admin' || path === '/api/deploy/credentials' || /^\/api\/requests\/[\w-]+\/feedback$/.test(path);
 
 export default {
   async fetch(request, env) {
@@ -12,7 +12,7 @@ export default {
       return Response.json({ ok: true, commit: env.APP_COMMIT || 'local', tree: env.APP_TREE || '', jobId: env.APP_JOB || '' }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (controlPath(url.pathname)) {
-      if (request.method !== 'GET' && request.headers.get('Origin') !== url.origin) {
+      if (request.method !== 'GET' && url.pathname !== '/api/deploy/credentials' && request.headers.get('Origin') !== url.origin) {
         return Response.json({ error: '请从本站页面提交请求。' }, { status: 403 });
       }
       const existing = request.headers.get('Cookie')?.match(/(?:^|;\s*)nc_visitor=([a-f0-9]{64})(?:;|$)/)?.[1];

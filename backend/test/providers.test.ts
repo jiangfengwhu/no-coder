@@ -3,7 +3,7 @@ import { LiveProviders, protectedPath, prNumberFromUrl } from '../src/control/pr
 import { jsonBody, secretMatches, textField } from '../src/control/security';
 import type { Env, Job } from '../src/control/types';
 
-const env = { GITHUB_OWNER: 'owner', GITHUB_REPO: 'repo', GITHUB_BRANCH: 'main', DEPLOY_WORKFLOW: 'deploy.yml', GITHUB_TOKEN: 'private-value' } as Env;
+const env = { GITHUB_OWNER: 'owner', GITHUB_REPO: 'repo', GITHUB_BRANCH: 'main', JULES_SOURCE: 'sources/test', QUEUE_ADMIN_TOKEN: 'test-admin', DEPLOY_WORKFLOW: 'deploy.yml', GITHUB_TOKEN: 'private-value' } as Env;
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 
 describe('release gates and API boundaries', () => {
@@ -14,8 +14,20 @@ describe('release gates and API boundaries', () => {
     const body = JSON.parse(fetcher.mock.calls[0][1].body);
     expect(body.prompt).toContain('NC_JOB_ID=task-id');
     expect(body.prompt).toContain('npm run deploy:jules');
+    expect(body.prompt).toContain('NC_DEPLOY_TOKEN=');
     expect(body.prompt).not.toContain('不要自行合并或部署');
     expect(body.automationMode).toBe('AUTO_CREATE_PR');
+  });
+
+  it('discovers the repository source automatically across pages', async () => {
+    const fetcher = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/sessions')) return json({ name: 'sessions/test', state: 'QUEUED' });
+      if (url.includes('pageToken=next')) return json({ sources: [{ name: 'sources/actual-repo', githubRepo: { owner: 'owner', repo: 'repo' } }] });
+      return json({ sources: [{ name: 'sources/another-repo', githubRepo: { owner: 'owner', repo: 'another' } }], nextPageToken: 'next' });
+    });
+    await new LiveProviders({ ...env, JULES_SOURCE: undefined, DEPLOY_MODE: 'jules' }, fetcher as typeof fetch).create({ id: 'job-id', title: '任务', description: '内容', acceptance: '' } as Job);
+    const body = JSON.parse(fetcher.mock.calls.at(-1)![1].body);
+    expect(body.sourceContext.source).toBe('sources/actual-repo');
   });
 
   it('accepts a Jules deployment only for the same source tree and active task marker', async () => {

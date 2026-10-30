@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueueEngine } from '../src/control/engine';
-import type { Env, Job, QueueMeta, QueueStore } from '../src/control/types';
+import { missingConfig, type Env, type Job, type QueueMeta, type QueueStore } from '../src/control/types';
+import { deploymentLease } from '../src/control/security';
 import type { Providers } from '../src/control/providers';
 
 class MemoryStore implements QueueStore {
@@ -16,7 +17,7 @@ class MemoryStore implements QueueStore {
 
 const config = {
   JULES_API_KEY: 'test-key', GITHUB_TOKEN: 'test-token', QUEUE_ADMIN_TOKEN: 'test-admin',
-  GITHUB_OWNER: 'owner', GITHUB_REPO: 'repo', GITHUB_BRANCH: 'main', JULES_SOURCE: 'sources/test', AUTO_MERGE: 'true',
+  GITHUB_OWNER: 'owner', GITHUB_REPO: 'repo', GITHUB_BRANCH: 'main', JULES_SOURCE: 'sources/test', AUTO_MERGE: 'true', CLOUDFLARE_API_TOKEN: 'test-cloudflare-token',
 } as Env;
 
 describe('durable serial queue', () => {
@@ -43,6 +44,28 @@ describe('durable serial queue', () => {
       validate: vi.fn().mockResolvedValue('success'), merge: vi.fn().mockResolvedValue('merged-sha'), deployment: vi.fn().mockResolvedValue('pending'),
     };
     engine = new QueueEngine(store, provider, config, () => clock);
+  });
+
+  it('keeps placeholder secrets unconfigured without requiring a manual Jules source', () => {
+    const missing = missingConfig({ ...config, DEPLOY_MODE: 'jules', JULES_SOURCE: undefined, JULES_API_KEY: 'REPLACE_WITH_JULES_API_KEY', CLOUDFLARE_API_TOKEN: 'REPLACE_WITH_CLOUDFLARE_API_TOKEN' });
+    expect(missing).toContain('JULES_API_KEY');
+    expect(missing).toContain('CLOUDFLARE_API_TOKEN');
+    expect(missing).not.toContain('JULES_SOURCE');
+  });
+
+  it('only supplies credentials to the authorized active task and refuses paused tasks', async () => {
+    engine = new QueueEngine(store, provider, { ...config, DEPLOY_MODE: 'jules' }, () => clock);
+    const active = await submit();
+    const waiting = await submit('owner-b');
+    await engine.tick();
+    const token = await deploymentLease(active, config.QUEUE_ADMIN_TOKEN!);
+    await expect(engine.deploymentCredentials(active, 'wrong-token')).rejects.toMatchObject({ status: 403 });
+    await expect(engine.deploymentCredentials(waiting, token)).rejects.toMatchObject({ status: 403 });
+    expect((await engine.deploymentCredentials(active, token)).apiToken).toBe('test-cloudflare-token');
+    expect(JSON.stringify(await engine.view(''))).not.toContain('test-cloudflare-token');
+    expect(JSON.stringify(await engine.view(''))).not.toContain(token);
+    await engine.admin('pause');
+    await expect(engine.deploymentCredentials(active, token)).rejects.toMatchObject({ status: 403 });
   });
 
   it('serializes simultaneous ticks and keeps FIFO order', async () => {

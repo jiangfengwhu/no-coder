@@ -50,6 +50,10 @@ export class AgentQueue extends DurableObject<Env> {
       }
       if (request.method !== 'POST') throw new HttpError(404, '接口不存在。');
       const body = await jsonBody(request);
+      if (url.pathname === '/api/deploy/credentials') {
+        const token = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
+        return Response.json(await this.engine.deploymentCredentials(textField(body, 'jobId', 36, 36), token), { headers: { 'Cache-Control': 'no-store' } });
+      }
       if (url.pathname === '/api/requests') {
         if (this.env.SUBMISSION_TOKEN && !await secretMatches(String(body.inviteCode ?? ''), this.env.SUBMISSION_TOKEN)) {
           throw new HttpError(403, '请输入正确的邀请码。');

@@ -3,6 +3,8 @@
   "name": "nocoder-lab",
   "main": "backend/src/index.ts",
   "compatibility_date": "2026-10-30",
+  "routes": [{ "pattern": "nocoder.297782.xyz/*", "zone_name": "297782.xyz" }],
+  "workers_dev": true,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -18,12 +20,8 @@
     "GITHUB_OWNER": "jiangfengwhu",
     "GITHUB_REPO": "no-coder",
     "GITHUB_BRANCH": "main",
-    // Fill the exact source name returned by the Jules Sources API.
-    // Example format only: sources/your-repository-source-id
-    "JULES_SOURCE": "",
-    "DEPLOY_WORKFLOW": "deploy.yml",
     "DEPLOY_MODE": "jules",
-    "APP_URL": "https://nocoder-lab.809740942.workers.dev",
+    "APP_URL": "https://nocoder.297782.xyz",
     "AUTO_MERGE": "true",
     "APP_COMMIT": "local"
   }

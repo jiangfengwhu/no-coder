@@ -1,4 +1,4 @@
-import { HttpError } from './types';
+import { configuredValue, HttpError } from './types';
 
 export async function digest(value: string): Promise<string> {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
@@ -6,11 +6,17 @@ export async function digest(value: string): Promise<string> {
 }
 
 export async function secretMatches(provided: string, expected?: string): Promise<boolean> {
-  if (!expected || !provided) return false;
+  if (!configuredValue(expected) || !provided) return false;
   const [left, right] = await Promise.all([digest(provided), digest(expected)]);
   let difference = 0;
   for (let i = 0; i < left.length; i++) difference |= left.charCodeAt(i) ^ right.charCodeAt(i);
   return difference === 0;
+}
+
+export async function deploymentLease(jobId: string, adminSecret: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(adminSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`nocoder-deploy:${jobId}`));
+  return Array.from(new Uint8Array(signature), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export async function jsonBody(request: Request): Promise<Record<string, unknown>> {
