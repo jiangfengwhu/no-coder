@@ -87,6 +87,16 @@ describe('release gates and API boundaries', () => {
     await expect(new LiveProviders(env, fetcher as typeof fetch).validate(1, 'abc')).rejects.toThrow('基础设施');
   });
 
+  it('allows canvas repository changes without applying control-repository path restrictions', async () => {
+    const fetcher = vi.fn().mockImplementation(async (url: string) => url.includes('/files?')
+      ? json([{ filename: 'scripts/deploy-jules.mjs' }])
+      : url.includes('/check-runs?')
+        ? json({ total_count: 1, check_runs: [{ name: 'validate', status: 'completed', conclusion: 'success', app: { slug: 'github-actions' } }] })
+        : json({ total_count: 0, state: 'pending' }));
+    const canvas = new LiveProviders({ ...env, CANVAS_URL: 'https://canvas.example' }, fetcher as typeof fetch);
+    await expect(canvas.validate(1, 'abc')).resolves.toBe('success');
+  });
+
   it('accepts only a successful GitHub Actions validate check', async () => {
     const fetcher = vi.fn().mockImplementation(async (url: string) => url.includes('/files?') ? json([]) : url.includes('/check-runs?') ? json({ total_count: 1, check_runs: [{ name: 'validate', status: 'completed', conclusion: 'success', app: { slug: 'github-actions' } }] }) : json({ total_count: 0, state: 'pending' }));
     expect(await new LiveProviders(env, fetcher as typeof fetch).validate(1, 'abc')).toBe('success');

@@ -153,7 +153,9 @@ export class LiveProviders implements Providers {
     for (let page = 1; page <= 30; page++) {
       const files = await this.request<{ filename: string; previous_filename?: string }[]>(
         'GitHub', `${this.repo}/pulls/${number}/files?per_page=100&page=${page}`);
-      if (files.some(file => protectedPath(file.filename) || (file.previous_filename && protectedPath(file.previous_filename)))) {
+      // The canvas is a separate repository. Its deployment files are governed by
+      // its task instructions; this gate protects the shared control repository.
+      if (!this.env.CANVAS_URL && files.some(file => protectedPath(file.filename) || (file.previous_filename && protectedPath(file.previous_filename)))) {
         throw new HttpError(409, 'PR 修改了队列或发布基础设施，需要管理员检查。');
       }
       if (files.length < 100) break;
