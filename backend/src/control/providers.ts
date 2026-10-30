@@ -54,7 +54,7 @@ export function prNumberFromUrl(url: string, env: Env): number {
 }
 
 export class LiveProviders implements Providers {
-  constructor(private env: Env, private fetcher: typeof fetch = fetch) {}
+  constructor(private env: Env, private fetcher: typeof fetch = fetch.bind(globalThis)) {}
 
   private async request<T>(provider: 'Jules' | 'GitHub', path: string, init: RequestInit = {}): Promise<T> {
     const base = provider === 'Jules' ? 'https://jules.googleapis.com/v1alpha/' : 'https://api.github.com/';

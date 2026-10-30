@@ -7,6 +7,17 @@ const env = { GITHUB_OWNER: 'owner', GITHUB_REPO: 'repo', GITHUB_BRANCH: 'main',
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 
 describe('release gates and API boundaries', () => {
+  it('binds the default native fetch receiver to the Worker global', async () => {
+    const nativeLikeFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) throw new TypeError('Illegal invocation');
+      return Promise.resolve(json({ number: 42 }));
+    });
+    vi.stubGlobal('fetch', nativeLikeFetch);
+    try {
+      await expect(new LiveProviders(env).pullRequest(42)).resolves.toMatchObject({ number: 42 });
+      expect(nativeLikeFetch).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('instructs Jules to build and deploy directly in its session', async () => {
     const fetcher = vi.fn().mockResolvedValue(json({ name: 'sessions/test', state: 'QUEUED' }));
     const providers = new LiveProviders({ ...env, DEPLOY_MODE: 'jules' }, fetcher as typeof fetch);
