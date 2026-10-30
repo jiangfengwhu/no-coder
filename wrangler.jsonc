@@ -20,6 +20,8 @@
     "GITHUB_BRANCH": "main",
     "JULES_SOURCE": "",
     "DEPLOY_WORKFLOW": "deploy.yml",
+    "DEPLOY_MODE": "jules",
+    "APP_URL": "https://nocoder-lab.809740942.workers.dev",
     "AUTO_MERGE": "true",
     "APP_COMMIT": "local"
   }

@@ -1,6 +1,6 @@
 # noCoder
 
-用户共同维护一个 Web 应用的实验：提交需求 → 串行创建 Jules session → 验证 PR → 合并 → 部署 Cloudflare → 校验线上版本 → 下一条需求。
+用户共同维护一个 Web 应用的实验：提交需求 → 串行创建 Jules session → 在会话中检查、打包并部署 Cloudflare → 核对 PR 与线上代码 → 合并 → 下一条需求。
 
 当前部署：https://nocoder-lab.809740942.workers.dev
 
@@ -9,7 +9,7 @@
 ## 项目结构
 
 ```text
-frontend/               React + Vite；说明、需求表单、队列、记录、调度管理
+frontend/               React + Vite + shadcn/ui；说明、需求表单、队列、记录、调度管理
 backend/src/app.ts      应用业务 API（Jules 可修改）
 backend/src/control/    Durable Object 队列、Jules / GitHub 对接
 backend/test/           串行性、恢复、发布门禁及输入验证测试
@@ -80,17 +80,19 @@ npx wrangler secret put QUEUE_ADMIN_TOKEN
 
 也可运行 `npm run setup:admin`，自动生成管理密钥、存入本机 Git 忽略的 `.dev.vars` 并上传 Cloudflare。重复运行会复用本地已有密钥，不会自动轮换。
 
-### 4. GitHub 自动发布
+### 4. Jules 会话内直接发布
 
-在仓库 Settings → Secrets and variables → Actions 中配置：
+默认由 Jules 在会话中执行发布脚本。完成代码修改并提交本地 commit 后运行：
 
-| 类型 | 名称 | 值 |
-| --- | --- | --- |
-| Secret | `CLOUDFLARE_API_TOKEN` | 可编辑本账户 Worker 的 Cloudflare API token |
-| Secret | `CLOUDFLARE_ACCOUNT_ID` | 当前 Cloudflare account ID |
-| Variable | `APP_URL` | 已部署 Worker 的 HTTPS 地址，不带路径 |
+```sh
+npm run deploy:jules
+```
 
-令牌使用 Cloudflare 的 Edit Cloudflare Workers 模板，限制到实际部署账户；不要提交令牌。GitHub 工作流会先运行 `npm run check`，再部署，并核对 `/api/health` 返回的提交 SHA。队列只接受对应合并提交的 `deploy.yml` push 工作流成功结果。
+发布进程环境需要 `CLOUDFLARE_API_TOKEN`，使用 Cloudflare 的 Edit Cloudflare Workers 模板并限制到实际账户。排队任务的提示词会同时给出 `NC_JOB_ID`。不把密钥放进提示词或源码。Jules 未配置运行凭据时，脚本会报错并要求配置，不会假装上传成功。
+
+脚本先检查、构建前端、打包后端，再将 Worker 和静态资源一起上传；最后核对线上 commit、代码树与任务标记。队列确认线上与 PR 代码树一致后才合并，并在合并后再次确认一致，才处理下一项。完整说明与可直接复制给 Jules 的指令见 [docs/JULES_DEPLOY.md](docs/JULES_DEPLOY.md)。
+
+`validate.yml` 保留 PR 检查，`deploy.yml` 仅作为手动发布备用，不在合并后重复部署。默认模式无需把 Cloudflare 发布 Token 再存到 GitHub Actions；手动触发备用工作流时才需配置 Actions 的 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID` Secrets 和 `APP_URL` Variable。
 
 修改配置后重新部署：
 
@@ -108,7 +110,7 @@ npm run deploy
 - Jules 等待补充时仍然占用位置；只允许持有原浏览器 HttpOnly Cookie 的提交者补充说明。Cookie 丢失后由管理员在 Jules 中处理。
 - PR 必须来自当前仓库、指向配置分支；不能修改调度、入口或发布基础设施（具体范围见 AGENTS.md）。要求 GitHub Actions 的 `validate` 检查通过，合并时锁定 PR head SHA。
 - 默认每 30 秒轮询，关闭页面后由 Durable Object Alarm 继续处理。未配置或暂停时不持续轮询。
-- 未确认创建、验证失败、合并失败或部署失败时暂停。两小时未结束也暂停；**不会假定远端停止，也不会启动下一项**。
+- 未确认创建、验证失败、合并失败或部署失败时暂停。在 Jules 直接发布模式下，Jules 失败、缺少 PR 或 PR 被关闭也暂停，因为线上可能已经改变。两小时未结束也暂停；**不会假定远端停止，也不会启动下一项**。
 - 管理员确认远端停止且没有未完成合并/部署以后，才能使用“结束当前任务并继续队列”。工具不会调用未知语义的远端取消接口。
 - 公共列表返回全部未完成任务及最近 100 条结束记录；完整记录保留在 Durable Object。每个浏览器最多 3 条未完成需求，每个 IP 每分钟最多 5 次提交，等待队列上限 100 条。
 - 第一阶段的路径门禁用于保护实验基础设施，不能替代对生成代码的安全审查或沙箱隔离。对外开放前可先设置邀请码，让实验在受控参与者之间运行。

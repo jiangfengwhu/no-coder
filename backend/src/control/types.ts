@@ -64,6 +64,10 @@ export interface Env {
   DEPLOY_WORKFLOW: string;
   AUTO_MERGE: string;
   APP_COMMIT: string;
+  APP_TREE?: string;
+  APP_JOB?: string;
+  APP_URL?: string;
+  DEPLOY_MODE?: string;
 }
 
 export interface QueueStore {

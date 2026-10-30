@@ -1,11 +1,22 @@
-import { ArrowUpRight, FileText, ListOrdered, Rocket, Sparkles } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Separator } from '@/components/ui/separator';
 
 export function Guide() {
-  const steps = [
-    { icon: FileText, title: '写下一个具体想法', text: '描述你想解决的问题、使用方式和预期效果。所有人共享这个应用，需求与处理记录也会公开。' },
-    { icon: ListOrdered, title: '按顺序，耐心等一等', text: '每条需求对应一个 Jules session。同一时间只处理一个任务，上一条发布完成后才会启动下一条。' },
-    { icon: Sparkles, title: 'Jules 接手实现', text: 'Jules 阅读现有代码，修改前端和后端并提交 PR。如果需要进一步说明，你可以在原浏览器里回复。' },
-    { icon: Rocket, title: '验证以后，更新上线', text: '代码通过检查后合并，由 GitHub Actions 部署到 Cloudflare。发布和健康检查通过后，队列才继续。' },
-  ];
-  return <section className="guide" aria-labelledby="guide-title"><span className="eyebrow">FIELD GUIDE / 001</span><h2 id="guide-title">从一个想法，到下一次更新。</h2><p className="guide-lead">这是一次关于 AI 自主维护软件的开放实验。你提出需求，我们观察它能走多远。</p><div className="guide-steps">{steps.map((step, index) => <article key={step.title}><span className="step-number">0{index + 1}</span><step.icon size={23} strokeWidth={1.5} /><h3>{step.title}</h3><p>{step.text}</p></article>)}</div><div className="guide-callout"><h3>一个好需求，可以这样写</h3><blockquote>“我想要一个公共留言板。任何人都能发布一段文字，按时间倒序显示。刷新页面后留言仍然保留，空留言不能提交。”</blockquote><a href="#submit" className="text-link">把你的想法也写下来 <ArrowUpRight size={15} /></a></div><div className="guide-faq"><h3>使用前，了解这几件事</h3><details><summary>为什么一次只处理一个需求？</summary><p>每个任务都从最新已发布版本开始，避免多条需求同时修改同一份代码。排队顺序按后端接收顺序确定。</p></details><details><summary>失败了会怎样？</summary><p>Jules 明确失败的任务会记录原因，然后处理下一条。无法确认远端状态、验证失败或部署失败时，调度会暂停并保留当前位置，等待检查。</p></details><details><summary>我能修改别人的需求吗？</summary><p>已提交内容会作为该次任务的记录保留。你可以提出新的改进需求；Jules 需要澄清时，原提交者可在同一浏览器中补充说明。清除浏览器 Cookie 会失去这项识别能力。</p></details><details><summary>现在可以提交什么？</summary><p>适合提交兼容 Web 和 Cloudflare Workers 的应用功能。请不要提交密钥、敏感个人信息或需要付费账户才能完成但尚未配置的服务。</p></details></div></section>;
+  return <article className="max-w-2xl space-y-7 text-sm leading-7">
+    <section><h2 className="mb-3 text-base font-semibold">这个应用怎样工作</h2><p className="text-muted-foreground">所有人共享同一个应用。你提交功能需求，Jules 读取仓库代码并实现，随后在会话中运行发布脚本，将前端和后端上传到 Cloudflare。</p></section>
+    <ol className="list-decimal space-y-4 pl-5 marker:text-muted-foreground">
+      <li><strong className="font-medium">提交需求。</strong><span className="text-muted-foreground"> 写清使用场景、所需功能和验收条件。需求内容及处理结果公开。</span></li>
+      <li><strong className="font-medium">等待处理。</strong><span className="text-muted-foreground"> 按提交顺序排队，同一时间只有一个 Jules 会话处理任务。</span></li>
+      <li><strong className="font-medium">实现并发布。</strong><span className="text-muted-foreground"> Jules 修改代码，运行检查，在会话中打包并上传 Cloudflare，然后提交 PR。</span></li>
+      <li><strong className="font-medium">确认版本。</strong><span className="text-muted-foreground"> 队列核对线上版本与 PR 一致，合并并确认源码一致后，再处理下一条需求。</span></li>
+    </ol>
+    <Separator />
+    <section><h2 className="mb-3 text-base font-semibold">需求示例</h2><blockquote className="border-l-2 pl-4 text-muted-foreground">增加公共留言板。任何人都能发布一段文字，按时间倒序显示。刷新后留言保留，空留言不能提交。</blockquote></section>
+    <section><h2 className="mb-2 text-base font-semibold">常见问题</h2><Accordion type="single" collapsible>
+      <AccordionItem value="order"><AccordionTrigger>为什么一次只处理一个需求？</AccordionTrigger><AccordionContent className="leading-7 text-muted-foreground">保证每条需求基于最新发布版本，减少同时修改同一份代码产生的冲突。创建、验证、合并和发布全程占用同一个队列位置。</AccordionContent></AccordionItem>
+      <AccordionItem value="feedback"><AccordionTrigger>Jules 需要我补充说明时怎么办？</AccordionTrigger><AccordionContent className="leading-7 text-muted-foreground">任务会显示“等待补充”。在提交需求的同一浏览器中展开任务并回复。清除 Cookie 会失去提交者身份识别。</AccordionContent></AccordionItem>
+      <AccordionItem value="failure"><AccordionTrigger>任务失败会怎样？</AccordionTrigger><AccordionContent className="leading-7 text-muted-foreground">任务及原因会保留。Jules 直接发布模式下，无法确认发布、合并或验证结果时，队列会暂停，等待管理员核对后恢复。</AccordionContent></AccordionItem>
+      <AccordionItem value="limits"><AccordionTrigger>提交内容有什么要求？</AccordionTrigger><AccordionContent className="leading-7 text-muted-foreground">提交适合 Web 和 Cloudflare Workers 的功能。每个浏览器最多同时保留 3 条未完成需求。请勿填写密钥、个人隐私，或依赖尚未配置的付费服务。</AccordionContent></AccordionItem>
+    </Accordion></section>
+  </article>;
 }

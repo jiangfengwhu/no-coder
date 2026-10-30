@@ -9,7 +9,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') {
-      return Response.json({ ok: true, commit: env.APP_COMMIT || 'local' }, { headers: { 'Cache-Control': 'no-store' } });
+      return Response.json({ ok: true, commit: env.APP_COMMIT || 'local', tree: env.APP_TREE || '', jobId: env.APP_JOB || '' }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (controlPath(url.pathname)) {
       if (request.method !== 'GET' && request.headers.get('Origin') !== url.origin) {

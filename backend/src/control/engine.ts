@@ -196,7 +196,11 @@ export class QueueEngine {
       if (job.state === 'running' || job.state === 'needs_input') {
         const session = await this.providers.session(job.sessionId!);
         job.sessionState = session.state;
-        if (session.state === 'FAILED') { await this.finish(job, 'failed', 'Jules 未能完成任务。'); return; }
+        if (session.state === 'FAILED') {
+          if (this.env.DEPLOY_MODE === 'jules') await this.pause(job, 'Jules 未能完成任务，需核对是否已发布代码后再继续。');
+          else await this.finish(job, 'failed', 'Jules 未能完成任务。');
+          return;
+        }
         if (session.state === 'AWAITING_USER_FEEDBACK') {
           job.lastAgentMessage = await this.providers.lastMessage(job.sessionId!);
           job.state = 'needs_input';
@@ -206,7 +210,11 @@ export class QueueEngine {
           return;
         } else if (session.state === 'COMPLETED') {
           const url = session.outputs?.find(output => output.pullRequest?.url)?.pullRequest?.url;
-          if (!url) { await this.finish(job, 'failed', 'Jules 已结束，但没有产出可发布的 PR。'); return; }
+          if (!url) {
+            if (this.env.DEPLOY_MODE === 'jules') await this.pause(job, 'Jules 已结束但没有 PR，需核对会话发布结果。');
+            else await this.finish(job, 'failed', 'Jules 已结束，但没有产出可发布的 PR。');
+            return;
+          }
           job.prNumber = prNumberFromUrl(url, this.env);
           job.prUrl = url;
           job.state = 'checking';
@@ -227,16 +235,26 @@ export class QueueEngine {
         if (pr.merged) {
           if (!pr.merge_commit_sha) throw new Error('合并提交尚未确认。');
           job.mergeSha = pr.merge_commit_sha;
+          job.headSha = pr.head.sha;
           job.state = 'deploying';
           await this.save(job, 'PR 已合并，等待 Cloudflare 部署和健康检查。');
           return;
         }
-        if (pr.state !== 'open') { await this.finish(job, 'failed', 'PR 已关闭且未合并。'); return; }
+        if (pr.state !== 'open') {
+          if (this.env.DEPLOY_MODE === 'jules') await this.pause(job, 'PR 已关闭但会话可能已发布，需核对源码和线上版本。');
+          else await this.finish(job, 'failed', 'PR 已关闭且未合并。');
+          return;
+        }
         if (pr.draft || pr.mergeable === null) return;
         if (!pr.mergeable) throw new HttpError(409, 'PR 存在合并冲突，需要修复后恢复。');
         job.headSha = pr.head.sha;
         if (await this.providers.validate(job.prNumber!, pr.head.sha) !== 'success') {
           job.state = 'checking';
+          await this.save(job);
+          return;
+        }
+        if (this.env.DEPLOY_MODE === 'jules' && await this.providers.deployment(pr.head.sha, job) !== 'success') {
+          job.message = '等待确认 Jules 会话发布的版本与当前 PR 一致。';
           await this.save(job);
           return;
         }
@@ -255,7 +273,7 @@ export class QueueEngine {
         return;
       }
       if (job.state === 'deploying') {
-        if (await this.providers.deployment(job.mergeSha!) === 'success') {
+        if (await this.providers.deployment(job.mergeSha!, job) === 'success') {
           this.meta.latestCommit = job.mergeSha;
           await this.finish(job, 'completed', '已发布到 Cloudflare，线上健康检查通过。');
         }

@@ -54,6 +54,28 @@ describe('durable serial queue', () => {
     expect((await engine.view('owner-b')).jobs.find(job => job.id === second)?.position).toBe(1);
   });
 
+  it('waits for Jules live deployment before merging and starting the next session', async () => {
+    engine = new QueueEngine(store, provider, { ...config, DEPLOY_MODE: 'jules' }, () => clock);
+    const id = await submit(); await submit('owner-b'); await engine.tick();
+    completeGeneration(); await engine.tick(); await engine.tick();
+    expect(provider.merge).not.toHaveBeenCalled();
+    expect(engine.meta.activeId).toBe(id);
+    vi.mocked(provider.deployment).mockResolvedValue('success');
+    await engine.tick(); expect(provider.merge).toHaveBeenCalledOnce();
+    await engine.tick(); expect(engine.jobs.get(id)?.state).toBe('completed');
+    await engine.tick(); expect(provider.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains the slot on Jules failure in direct deployment mode', async () => {
+    engine = new QueueEngine(store, provider, { ...config, DEPLOY_MODE: 'jules' }, () => clock);
+    const id = await submit(); await engine.tick();
+    vi.mocked(provider.session).mockResolvedValue({ name: 'sessions/remote-1', state: 'FAILED' });
+    await engine.tick();
+    expect(engine.meta.paused).toBe(true);
+    expect(engine.meta.activeId).toBe(id);
+    expect(engine.jobs.get(id)?.state).not.toBe('failed');
+  });
+
   it('does not release the slot until generation, merge and deployment all finish', async () => {
     const first = await submit(); await submit('owner-b');
     await engine.tick(); completeGeneration(); await engine.tick();
