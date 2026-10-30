@@ -98,8 +98,8 @@ describe('release gates and API boundaries', () => {
   });
 
   it('explains a GitHub token permission failure during merge', async () => {
-    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: 'Resource not accessible by personal access token' }), { status: 403 }));
-    await expect(new LiveProviders(env, fetcher as typeof fetch).merge(1, 'abc')).rejects.toThrow('Contents 和 Pull requests');
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: 'Resource not accessible by personal access token' }), { status: 403, headers: { 'X-Accepted-GitHub-Permissions': 'contents=write' } }));
+    await expect(new LiveProviders(env, fetcher as typeof fetch).merge(1, 'abc')).rejects.toThrow('contents=write');
   });
 
   it('accepts only a successful GitHub Actions validate check', async () => {

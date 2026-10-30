@@ -66,7 +66,12 @@ export class LiveProviders implements Providers {
       if (provider === 'GitHub' && response.status === 403 && path.endsWith('/merge')) {
         const body = await response.json().catch(() => null) as { message?: string } | null;
         const reason = body?.message ?? '';
-        if (/resource not accessible|integration|permission/i.test(reason)) throw new HttpError(403, 'GitHub Token 没有合并画板仓库 PR 的权限，请检查 Contents 和 Pull requests 写入权限及仓库授权。');
+        if (/resource not accessible|integration|permission/i.test(reason)) {
+          const expected = response.headers.get('X-Accepted-GitHub-Permissions') ?? '';
+          const safeExpected = /^[a-z_=,; ]{1,200}$/i.test(expected) ? ` GitHub 提示所需权限：${expected}。` : '';
+          const kind = /personal access token/i.test(reason) ? '个人访问令牌' : /integration/i.test(reason) ? '集成令牌' : '令牌';
+          throw new HttpError(403, `GitHub 拒绝了当前 Worker 使用的${kind}的合并请求。${safeExpected}`);
+        }
         if (/rate limit/i.test(reason)) throw new HttpError(403, 'GitHub API 配额已用完，请稍后重试。');
         if (/protected|protection|branch|ruleset|review|status check/i.test(reason)) throw new HttpError(403, 'GitHub 仓库的分支保护规则阻止了合并，请检查 PR 的合并要求。');
       }
