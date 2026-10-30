@@ -3,7 +3,7 @@ import { digest } from './control/security';
 import type { Env } from './control/types';
 export { AgentQueue } from './control/queue';
 
-const controlPath = (path: string) => path === '/api/queue' || path === '/api/requests' || path === '/api/admin' || path === '/api/deploy/credentials' || /^\/api\/requests\/[\w-]+\/feedback$/.test(path);
+const controlPath = (path: string) => path === '/api/queue' || path === '/api/requests' || path === '/api/admin' || path === '/api/admin/check-tokens' || path === '/api/deploy/credentials' || /^\/api\/requests\/[\w-]+\/feedback$/.test(path);
 
 export default {
   async fetch(request, env) {

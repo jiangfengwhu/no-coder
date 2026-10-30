@@ -3,6 +3,7 @@ import { QueueEngine } from './engine';
 import { LiveProviders } from './providers';
 import { digest, jsonBody, secretMatches, textField } from './security';
 import { HttpError, missingConfig, type Env, type Job, type QueueMeta, type QueueStore } from './types';
+import { checkTokens } from './diagnostics';
 
 class DurableStore implements QueueStore {
   constructor(private storage: DurableObjectStorage) {}
@@ -50,6 +51,11 @@ export class AgentQueue extends DurableObject<Env> {
       }
       if (request.method !== 'POST') throw new HttpError(404, '接口不存在。');
       const body = await jsonBody(request);
+      if (url.pathname === '/api/admin/check-tokens') {
+        const bearer = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
+        if (!await secretMatches(bearer, this.env.QUEUE_ADMIN_TOKEN)) throw new HttpError(403, '管理密钥无效。');
+        return Response.json(await checkTokens(this.env), { headers: { 'Cache-Control': 'no-store' } });
+      }
       if (url.pathname === '/api/deploy/credentials') {
         const token = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
         return Response.json(await this.engine.deploymentCredentials(textField(body, 'jobId', 36, 36), token), { headers: { 'Cache-Control': 'no-store' } });
