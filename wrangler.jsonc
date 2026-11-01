@@ -25,6 +25,7 @@
     "CANVAS_URL": "https://nocoder-canvas.297782.xyz",
     "APP_URL": "https://nocoder.297782.xyz",
     "AUTO_MERGE": "true",
+    "AUTO_CREATIVE": "true",
     "APP_COMMIT": "local"
   }
 }

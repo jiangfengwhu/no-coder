@@ -34,6 +34,8 @@ export interface QueueMeta {
   paused: boolean;
   pauseReason?: string;
   latestCommit?: string;
+  autoDay?: string;
+  autoCount?: number;
 }
 
 export interface QueueView {
@@ -70,6 +72,7 @@ export interface Env {
   APP_JOB?: string;
   APP_URL?: string;
   CANVAS_URL?: string;
+  AUTO_CREATIVE?: string;
   DEPLOY_MODE?: string;
 }
 

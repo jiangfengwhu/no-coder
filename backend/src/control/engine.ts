@@ -4,6 +4,7 @@ import { deploymentLease, secretMatches } from './security';
 
 const MAX_WAITING = 100;
 const MAX_RUNTIME = 2 * 60 * 60 * 1000;
+const CREATIVE_THEMES = ['有趣的小互动', '画板上的探索和发现', '轻量创意工具', '可访问的视觉反馈', '一人即可玩的小游戏', '令人惊喜的细节'];
 
 export class QueueEngine {
   meta: QueueMeta = { nextNumber: 1, activeId: null, paused: false };
@@ -63,6 +64,10 @@ export class QueueEngine {
     job.message = message;
     job.completedAt = this.date();
     this.meta.activeId = null;
+    if (state === 'failed' && job.ownerHash === 'system:creative') {
+      this.meta.paused = true;
+      this.meta.pauseReason = '自动创意任务失败，等待管理员检查。';
+    }
     await this.save(job, message);
   }
 
@@ -203,6 +208,18 @@ export class QueueEngine {
         return;
       }
       job = [...this.jobs.values()].filter(job => job.state === 'queued').sort((a, b) => a.number - b.number)[0];
+      if (!job && this.env.AUTO_CREATIVE === 'true') {
+        const day = new Date(this.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        if (this.meta.autoDay !== day) { this.meta.autoDay = day; this.meta.autoCount = 0; }
+        const count = this.meta.autoCount ?? 0;
+        if (count < 70) {
+          const theme = CREATIVE_THEMES[count % CREATIVE_THEMES.length];
+          const now = this.date();
+          job = { id: crypto.randomUUID(), number: this.meta.nextNumber++, requestId: crypto.randomUUID(), ownerHash: 'system:creative', title: `创意实验 ${day} #${count + 1}`, description: `基于当前画板已有功能，自主设计并实现一个有趣、有实际交互的小改进，方向可参考：${theme}。先审视已有内容，避免重复和堆砌；可自由选择更好的创意。保持现有功能可用，兼顾手机、键盘和性能；不要引入需要付费或新增密钥的服务。`, acceptance: '新增体验可用，原有功能正常，检查通过。', state: 'queued', createdAt: now, updatedAt: now, events: [{ at: now, text: '自动创意任务已加入队列。' }] };
+          this.meta.autoCount = count + 1;
+          await this.save(job);
+        }
+      }
       if (!job) return;
       this.meta.activeId = job.id;
       job.startedAt = this.date();

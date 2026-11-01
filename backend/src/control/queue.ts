@@ -60,6 +60,12 @@ export class AgentQueue extends DurableObject<Env> {
     const current = await this.ctx.storage.getAlarm();
     if (needsWork) {
       if (!current || (!state.activeId && current > Date.now() + 2000)) await this.ctx.storage.setAlarm(Date.now() + 1000);
+    } else if (state.configured && !state.paused && this.env.AUTO_CREATIVE === 'true') {
+      const now = Date.now();
+      const nextDay = (Math.floor((now + 8 * 60 * 60 * 1000) / 86_400_000) + 1) * 86_400_000 - 8 * 60 * 60 * 1000;
+      const day = new Date(now + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const due = this.engine.meta.autoDay === day && (this.engine.meta.autoCount ?? 0) >= 70 ? nextDay : now + 1000;
+      if (!current || current > due) await this.ctx.storage.setAlarm(due);
     } else if (current) await this.ctx.storage.deleteAlarm();
   }
 
@@ -129,6 +135,13 @@ export class AgentQueue extends DurableObject<Env> {
         const bearer = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
         if (!await secretMatches(bearer, this.env.QUEUE_ADMIN_TOKEN)) throw new HttpError(403, '管理密钥无效。');
         const action = textField(body, 'action', 1, 40);
+        if (action === 'inspect_active') {
+          const view = await this.engine.view('');
+          const active = view.jobs.find(job => job.id === view.activeId);
+          if (!active?.sessionId) throw new HttpError(409, '当前任务没有关联会话。');
+          const remote = await new LiveProviders(this.env).session(active.sessionId);
+          return Response.json({ state: remote.state, pullRequest: remote.outputs?.find(output => output.pullRequest?.url)?.pullRequest?.url ?? null });
+        }
         if (action === 'reset_all') {
           await this.engine.exclusive(async () => {
             await this.ctx.storage.deleteAlarm();

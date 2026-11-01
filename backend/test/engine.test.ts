@@ -77,6 +77,28 @@ describe('durable serial queue', () => {
     expect((await engine.view('owner-b')).jobs.find(job => job.id === second)?.position).toBe(1);
   });
 
+  it('creates one serial creative task, prioritizes queued users, and enforces the Shanghai daily limit', async () => {
+    engine = new QueueEngine(store, provider, { ...config, AUTO_CREATIVE: 'true' }, () => clock);
+    const userId = await submit();
+    await engine.tick();
+    expect(engine.meta.activeId).toBe(userId);
+    expect(engine.meta.autoCount).toBeUndefined();
+    await engine.admin('pause');
+    await engine.admin('fail_active', { confirmRemoteStopped: true });
+    await engine.tick();
+    expect(engine.meta.autoCount).toBe(1);
+    expect(engine.jobs.get(engine.meta.activeId!)?.ownerHash).toBe('system:creative');
+    expect(provider.create).toHaveBeenCalledTimes(2);
+    await engine.admin('fail_active', { confirmRemoteStopped: true });
+    engine.meta.autoCount = 70;
+    await engine.tick();
+    expect(provider.create).toHaveBeenCalledTimes(2);
+    clock += 86_400_000;
+    await engine.tick();
+    expect(provider.create).toHaveBeenCalledTimes(3);
+    expect(engine.meta.autoCount).toBe(1);
+  });
+
   it('waits for Jules live deployment before merging and starting the next session', async () => {
     engine = new QueueEngine(store, provider, { ...config, DEPLOY_MODE: 'jules' }, () => clock);
     const id = await submit(); await submit('owner-b'); await engine.tick();
