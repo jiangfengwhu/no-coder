@@ -24,6 +24,9 @@ export interface Job {
   message?: string;
   lastAgentMessage?: string;
   events: { at: string; text: string }[];
+  repairCount?: number;
+  browserHealthyTree?: string;
+  recovery?: { tree: string; stage: 'rolling_back' | 'sending' | 'repairing' | 'failed'; target: string };
 }
 
 export type PublicJob = Omit<Job, 'ownerHash' | 'requestId'> & { mine: boolean; position: number | null };
@@ -36,6 +39,7 @@ export interface QueueMeta {
   latestCommit?: string;
   autoDay?: string;
   autoCount?: number;
+  stable?: { version: string; tree: string; commit: string };
 }
 
 export interface QueueView {

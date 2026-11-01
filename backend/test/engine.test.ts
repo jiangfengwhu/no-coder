@@ -77,6 +77,41 @@ describe('durable serial queue', () => {
     expect((await engine.view('owner-b')).jobs.find(job => job.id === second)?.position).toBe(1);
   });
 
+  it('rolls back a matching frontend failure once and reuses the same session', async () => {
+    const id = await submit(); await engine.tick();
+    engine.meta.stable = { version: 'stable-version', tree: 'stable-tree', commit: 'stable-commit' };
+    let restored = false;
+    provider.runtimeHealth = vi.fn(async () => ({ ok: true, tree: restored ? 'stable-tree' : 'bad-tree', commit: 'commit', jobId: id }));
+    provider.currentVersion = vi.fn(async () => restored ? 'stable-version' : 'bad-version');
+    provider.rollback = vi.fn(async () => { restored = true; });
+    const report = { tree: 'bad-tree', jobId: id, kind: 'error', message: 'TypeError: render failed', location: '/assets/app.js:1:20' };
+    await expect(engine.reportRuntime(report)).resolves.toMatchObject({ accepted: true, duplicate: false });
+    expect(provider.rollback).toHaveBeenCalledExactlyOnceWith('stable-version');
+    expect(provider.create).toHaveBeenCalledTimes(1);
+    expect(provider.message).toHaveBeenCalledWith('remote-1', expect.stringContaining('TypeError: render failed'));
+    expect(engine.meta.paused).toBe(false);
+    expect(engine.jobs.get(id)?.state).toBe('running');
+    await expect(engine.reportRuntime(report)).resolves.toMatchObject({ duplicate: true });
+    expect(provider.rollback).toHaveBeenCalledTimes(1);
+    expect(provider.message).toHaveBeenCalledTimes(1);
+    const restarted = new QueueEngine(store, provider, config, () => clock);
+    await expect(restarted.reportRuntime(report)).resolves.toMatchObject({ duplicate: true });
+  });
+
+  it('ignores stale frontend reports and keeps the queue paused if rollback fails', async () => {
+    const id = await submit(); await engine.tick();
+    engine.meta.stable = { version: 'stable-version', tree: 'stable-tree', commit: 'stable-commit' };
+    provider.runtimeHealth = vi.fn(async () => ({ ok: true, tree: 'bad-tree', commit: 'commit', jobId: id }));
+    provider.currentVersion = vi.fn(async () => 'bad-version');
+    provider.rollback = vi.fn().mockRejectedValue(new Error('network failed'));
+    const report = { tree: 'stale-tree', jobId: id, kind: 'error', message: 'Error', location: '/' };
+    await expect(engine.reportRuntime(report)).rejects.toMatchObject({ status: 409 });
+    expect(provider.rollback).not.toHaveBeenCalled();
+    await expect(engine.reportRuntime({ ...report, tree: 'bad-tree' })).rejects.toMatchObject({ status: 503 });
+    expect(engine.meta.paused).toBe(true);
+    expect(provider.message).not.toHaveBeenCalled();
+  });
+
   it('creates one serial creative task, prioritizes queued users, and enforces the Shanghai daily limit', async () => {
     engine = new QueueEngine(store, provider, { ...config, AUTO_CREATIVE: 'true' }, () => clock);
     const userId = await submit();

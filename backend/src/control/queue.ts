@@ -4,6 +4,7 @@ import { LiveProviders } from './providers';
 import { digest, jsonBody, secretMatches, textField } from './security';
 import { HttpError, missingConfig, type Env, type Job, type QueueMeta, type QueueStore } from './types';
 import { checkTokens } from './diagnostics';
+import { runtimeReport } from './runtime-report';
 
 class DurableStore implements QueueStore {
   constructor(private storage: DurableObjectStorage) {}
@@ -96,6 +97,17 @@ export class AgentQueue extends DurableObject<Env> {
       }
       if (request.method !== 'POST') throw new HttpError(404, '接口不存在。');
       const body = await jsonBody(request);
+      if (url.pathname === '/api/runtime-report') {
+        const rateKey = `runtime-rate:${request.headers.get('X-IP-Hash')}`;
+        await this.ctx.storage.transaction(async tx => {
+          const rate = await tx.get<{ at: number; count: number }>(rateKey);
+          if (rate && Date.now() - rate.at < 60_000 && rate.count >= 6) throw new HttpError(429, '报告过于频繁。');
+          await tx.put(rateKey, rate && Date.now() - rate.at < 60_000 ? { ...rate, count: rate.count + 1 } : { at: Date.now(), count: 1 });
+        });
+        const result = await this.engine.reportRuntime(runtimeReport(body));
+        await this.schedule();
+        return Response.json(result);
+      }
       if (url.pathname === '/api/admin/check-tokens') {
         const bearer = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
         if (!await secretMatches(bearer, this.env.QUEUE_ADMIN_TOKEN)) throw new HttpError(403, '管理密钥无效。');
@@ -135,6 +147,7 @@ export class AgentQueue extends DurableObject<Env> {
         const bearer = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
         if (!await secretMatches(bearer, this.env.QUEUE_ADMIN_TOKEN)) throw new HttpError(403, '管理密钥无效。');
         const action = textField(body, 'action', 1, 40);
+        if (action === 'mark_stable') { await this.engine.markStable(); return Response.json({ ok: true }); }
         if (action === 'inspect_active') {
           const view = await this.engine.view('');
           const active = view.jobs.find(job => job.id === view.activeId);

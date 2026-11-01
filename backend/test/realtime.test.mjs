@@ -35,6 +35,16 @@ describe('hibernating queue WebSocket integration', () => {
     expect(plain.status).toBe(426);
   });
 
+  it('restricts runtime reporting origins and supports canvas CORS preflight', async () => {
+    const foreign = await runtime.dispatchFetch(`${origin}/api/runtime-report`, { method: 'POST', headers: { Origin: 'https://evil.test', 'Content-Type': 'application/json' }, body: '{}' });
+    expect(foreign.status).toBe(403);
+    const preflight = await runtime.dispatchFetch(`${origin}/api/runtime-report`, { method: 'OPTIONS', headers: { Origin: 'https://nocoder-canvas.297782.xyz' } });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('https://nocoder-canvas.297782.xyz');
+    const invalid = await runtime.dispatchFetch(`${origin}/api/runtime-report`, { method: 'POST', headers: { Origin: 'https://nocoder-canvas.297782.xyz', 'Content-Type': 'application/json' }, body: '{}' });
+    expect(invalid.status).toBe(400);
+  });
+
   it('pushes changes to both visitors with isolated ownership, supports refresh and auto ping/pong', async () => {
     const initialA = await runtime.dispatchFetch(`${origin}/api/queue`);
     const initialB = await runtime.dispatchFetch(`${origin}/api/queue`);

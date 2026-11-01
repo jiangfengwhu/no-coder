@@ -3,7 +3,7 @@ import { digest } from './control/security';
 import type { Env } from './control/types';
 export { AgentQueue } from './control/queue';
 
-const controlPath = (path: string) => path === '/api/queue' || path === '/api/queue/live' || path === '/api/requests' || path === '/api/admin' || path === '/api/admin/check-tokens' || path === '/api/deploy/credentials' || /^\/api\/requests\/[\w-]+\/feedback$/.test(path);
+const controlPath = (path: string) => path === '/api/runtime-report' || path === '/api/queue' || path === '/api/queue/live' || path === '/api/requests' || path === '/api/admin' || path === '/api/admin/check-tokens' || path === '/api/deploy/credentials' || /^\/api\/requests\/[\w-]+\/feedback$/.test(path);
 
 export default {
   async fetch(request, env) {
@@ -12,10 +12,14 @@ export default {
       return Response.json({ ok: true, commit: env.APP_COMMIT || 'local', tree: env.APP_TREE || '', jobId: env.APP_JOB || '' }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (controlPath(url.pathname)) {
+      const runtime = url.pathname === '/api/runtime-report';
+      const canvasOrigin = new URL(env.CANVAS_URL || 'https://nocoder-canvas.297782.xyz').origin;
+      if (runtime && request.headers.get('Origin') !== canvasOrigin && request.headers.get('Origin') !== url.origin) return Response.json({ error: '来源无效。' }, { status: 403 });
+      if (runtime && request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': canvasOrigin, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400', Vary: 'Origin' } });
       if (url.pathname === '/api/queue/live' && request.headers.get('Origin') !== url.origin) {
         return Response.json({ error: '请从本站页面建立实时连接。' }, { status: 403 });
       }
-      if (request.method !== 'GET' && url.pathname !== '/api/deploy/credentials' && request.headers.get('Origin') !== url.origin) {
+      if (!runtime && request.method !== 'GET' && url.pathname !== '/api/deploy/credentials' && request.headers.get('Origin') !== url.origin) {
         return Response.json({ error: '请从本站页面提交请求。' }, { status: 403 });
       }
       const existing = request.headers.get('Cookie')?.match(/(?:^|;\s*)nc_visitor=([a-f0-9]{64})(?:;|$)/)?.[1];
@@ -29,6 +33,7 @@ export default {
         ? new Response(null, { status: 101, headers: upstream.headers, webSocket: upstream.webSocket })
         : new Response(upstream.body, upstream);
       response.headers.set('Cache-Control', 'no-store');
+      if (runtime) { response.headers.set('Access-Control-Allow-Origin', request.headers.get('Origin')!); response.headers.set('Vary', 'Origin'); }
       response.headers.set('X-Content-Type-Options', 'nosniff');
       if (!existing) response.headers.append('Set-Cookie', `nc_visitor=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000${url.protocol === 'https:' ? '; Secure' : ''}`);
       return response;
