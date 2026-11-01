@@ -40,6 +40,7 @@ export interface QueueMeta {
   autoDay?: string;
   autoCount?: number;
   stable?: { version: string; tree: string; commit: string };
+  previousStable?: { version: string; tree: string; commit: string };
 }
 
 export interface QueueView {

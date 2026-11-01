@@ -208,9 +208,14 @@ export class QueueEngine {
     return { version, tree: after.tree, commit: after.commit };
   }
 
+  private rememberStable(snapshot: NonNullable<QueueMeta['stable']>) {
+    if (this.meta.stable && this.meta.stable.tree !== snapshot.tree) this.meta.previousStable = this.meta.stable;
+    this.meta.stable = snapshot;
+  }
+
   markStable() {
     return this.exclusive(async () => {
-      this.meta.stable = await this.stableSnapshot();
+      this.rememberStable(await this.stableSnapshot());
       await this.save();
     });
   }
@@ -218,13 +223,13 @@ export class QueueEngine {
   reportRuntime(report: { tree: string; jobId: string; kind: string; message: string; location: string }) {
     return this.exclusive(async () => {
       const job = this.jobs.get(report.jobId);
-      const stable = this.meta.stable;
+      const stable = this.meta.stable?.tree === report.tree ? this.meta.previousStable : this.meta.stable;
       if (report.kind === 'ready') {
         if (!job || !this.providers.runtimeHealth || !this.providers.currentVersion) throw new HttpError(409, '版本无效。');
         const live = await this.providers.runtimeHealth();
         if (!live.ok || live.tree !== report.tree || live.jobId !== job.id) throw new HttpError(409, '版本不匹配。');
         job.browserHealthyTree = report.tree;
-        if (job.state === 'completed') this.meta.stable = await this.stableSnapshot(live.tree);
+        if (job.state === 'completed') this.rememberStable(await this.stableSnapshot(live.tree));
         await this.save(job);
         return { accepted: true, duplicate: false };
       }
@@ -252,6 +257,8 @@ export class QueueEngine {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
         if (!restored) throw new Error('回退版本尚未确认，等待管理员检查。');
+        this.meta.stable = stable;
+        this.meta.previousStable = undefined;
         job.recovery.stage = 'sending';
         await this.save(job, '稳定版本已恢复，准备向原会话发送修复要求。');
         const lease = await deploymentLease(job.id, this.env.QUEUE_ADMIN_TOKEN!);
@@ -424,7 +431,7 @@ export class QueueEngine {
         if (await this.providers.deployment(job.mergeSha!, job) === 'success') {
           if (job.browserHealthyTree && this.providers.runtimeHealth && this.providers.currentVersion) {
             const health = await this.providers.runtimeHealth();
-            if (health.ok && health.tree === job.browserHealthyTree && health.jobId === job.id) this.meta.stable = await this.stableSnapshot(health.tree);
+            if (health.ok && health.tree === job.browserHealthyTree && health.jobId === job.id) this.rememberStable(await this.stableSnapshot(health.tree));
           }
           this.meta.latestCommit = job.mergeSha;
           await this.finish(job, 'completed', '已发布到 Cloudflare，线上健康检查通过。');

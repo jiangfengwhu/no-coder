@@ -112,6 +112,20 @@ describe('durable serial queue', () => {
     expect(provider.message).not.toHaveBeenCalled();
   });
 
+  it('can recover a previously promoted version using the earlier stable snapshot', async () => {
+    const id = await submit(); await engine.tick();
+    engine.meta.stable = { version: 'new-version', tree: 'bad-tree', commit: 'commit' };
+    engine.meta.previousStable = { version: 'old-version', tree: 'old-tree', commit: 'old-commit' };
+    let restored = false;
+    provider.runtimeHealth = vi.fn(async () => ({ ok: true, tree: restored ? 'old-tree' : 'bad-tree', commit: 'commit', jobId: id }));
+    provider.currentVersion = vi.fn(async () => restored ? 'old-version' : 'new-version');
+    provider.rollback = vi.fn(async () => { restored = true; });
+    await engine.reportRuntime({ tree: 'bad-tree', jobId: id, kind: 'error', message: 'Late failure', location: '/' });
+    expect(provider.rollback).toHaveBeenCalledExactlyOnceWith('old-version');
+    expect(engine.meta.stable?.tree).toBe('old-tree');
+    expect(engine.meta.previousStable).toBeUndefined();
+  });
+
   it('creates one serial creative task, prioritizes queued users, and enforces the Shanghai daily limit', async () => {
     engine = new QueueEngine(store, provider, { ...config, AUTO_CREATIVE: 'true' }, () => clock);
     const userId = await submit();
