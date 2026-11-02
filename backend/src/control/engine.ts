@@ -153,7 +153,7 @@ export class QueueEngine {
       } else if (action === 'resume') {
         this.meta.paused = false;
         this.meta.pauseReason = undefined;
-        if (active) active.startedAt = this.date();
+        if (active) { active.startedAt = this.date(); active.message = '调度已恢复，等待下一次状态检查。'; }
       } else if (action === 'approve_merge') {
         if (active?.state !== 'ready_to_merge') throw new HttpError(409, '当前没有等待合并的任务。');
         active.mergeApproved = true;
@@ -415,6 +415,7 @@ export class QueueEngine {
           job.mergeSha = pr.merge_commit_sha;
           job.headSha = pr.head.sha;
           job.state = 'deploying';
+          job.message = 'PR 已合并，正在核对线上发布版本。';
           await this.save(job, 'PR 已合并，等待 Cloudflare 部署和健康检查。');
           return;
         }
@@ -454,6 +455,7 @@ export class QueueEngine {
         // Retry safety: the next tick checks pr.merged before attempting another merge.
         job.mergeSha = await this.providers.merge(job.prNumber!, pr.head.sha);
         job.state = 'deploying';
+        job.message = 'PR 已合并，正在核对线上发布版本。';
         await this.save(job, 'PR 已合并，等待 Cloudflare 部署和健康检查。');
         return;
       }
