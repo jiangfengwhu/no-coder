@@ -77,6 +77,37 @@ describe('durable serial queue', () => {
     expect((await engine.view('owner-b')).jobs.find(job => job.id === second)?.position).toBe(1);
   });
 
+  it('answers routine questions on automatic tasks once in the original session', async () => {
+    engine = new QueueEngine(store, provider, { ...config, AUTO_CREATIVE: 'true' }, () => clock);
+    provider.advise = vi.fn().mockResolvedValue({ action: 'reply', message: '请沿用现有组件。' });
+    await engine.tick();
+    vi.mocked(provider.session).mockResolvedValue({ name: 'sessions/remote-1', state: 'AWAITING_USER_FEEDBACK' });
+    await engine.tick(); await engine.tick();
+    expect(provider.message).toHaveBeenCalledTimes(1);
+    expect(provider.create).toHaveBeenCalledTimes(1);
+    expect(provider.advise).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns from PR checking to session handling when Jules requests more input', async () => {
+    const id = await submit(); await engine.tick();
+    completeGeneration(); await engine.tick();
+    expect(engine.jobs.get(id)?.state).toBe('checking');
+    vi.mocked(provider.session).mockResolvedValue({ name: 'sessions/remote-1', state: 'AWAITING_USER_FEEDBACK' });
+    await engine.tick(); await engine.tick();
+    expect(engine.jobs.get(id)?.state).toBe('needs_input');
+    expect(provider.merge).not.toHaveBeenCalled();
+  });
+
+  it('pauses automatic tasks when Agnes requests a human decision', async () => {
+    engine = new QueueEngine(store, provider, { ...config, AUTO_CREATIVE: 'true' }, () => clock);
+    provider.advise = vi.fn().mockResolvedValue({ action: 'human', message: '需要配置付费密钥。' });
+    await engine.tick();
+    vi.mocked(provider.session).mockResolvedValue({ name: 'sessions/remote-1', state: 'AWAITING_USER_FEEDBACK' });
+    await engine.tick();
+    expect(engine.meta.paused).toBe(true);
+    expect(provider.message).not.toHaveBeenCalled();
+  });
+
   it('rolls back a matching frontend failure once and reuses the same session', async () => {
     const id = await submit(); await engine.tick();
     engine.meta.stable = { version: 'stable-version', tree: 'stable-tree', commit: 'stable-commit' };
