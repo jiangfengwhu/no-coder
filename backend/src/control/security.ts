@@ -1,4 +1,11 @@
-import { configuredValue, HttpError } from './types';
+import { configuredValue, HttpError, type Env } from './types';
+
+export function redactCoordinatorContext(env: Env, text: string): string {
+  for (const secret of [env.JULES_API_KEY, env.GITHUB_TOKEN, env.QUEUE_ADMIN_TOKEN, env.CLOUDFLARE_API_TOKEN, env.SUBMISSION_TOKEN]) {
+    if (secret && secret.length > 8) text = text.split(secret).join('[redacted]');
+  }
+  return text.replace(/NC_DEPLOY_TOKEN\s*=\s*[^\s"'<>\\]+/gi, 'NC_DEPLOY_TOKEN=[redacted]').replace(/Bearer\s+[a-z0-9._-]+/gi, 'Bearer [redacted]');
+}
 
 export async function digest(value: string): Promise<string> {
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));

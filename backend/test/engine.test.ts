@@ -79,13 +79,11 @@ describe('durable serial queue', () => {
 
   it('answers routine questions on automatic tasks once in the original session', async () => {
     engine = new QueueEngine(store, provider, { ...config, AUTO_CREATIVE: 'true' }, () => clock);
-    provider.advise = vi.fn().mockResolvedValue({ action: 'reply', message: '请沿用现有组件。' });
     await engine.tick();
     vi.mocked(provider.session).mockResolvedValue({ name: 'sessions/remote-1', state: 'AWAITING_USER_FEEDBACK' });
     await engine.tick(); await engine.tick();
     expect(provider.message).toHaveBeenCalledTimes(1);
     expect(provider.create).toHaveBeenCalledTimes(1);
-    expect(provider.advise).toHaveBeenCalledTimes(1);
   });
 
   it('returns from PR checking to session handling when Jules requests more input', async () => {
@@ -98,11 +96,21 @@ describe('durable serial queue', () => {
     expect(provider.merge).not.toHaveBeenCalled();
   });
 
-  it('pauses automatic tasks when Agnes requests a human decision', async () => {
+  it('asks the original session to republish a mismatched PR once per head', async () => {
+    engine = new QueueEngine(store, provider, { ...config, DEPLOY_MODE: 'jules' }, () => clock);
+    await submit(); await engine.tick(); completeGeneration(); await engine.tick();
+    await engine.tick(); await engine.tick();
+    expect(provider.message).toHaveBeenCalledTimes(1);
+    expect(provider.message).toHaveBeenCalledWith('remote-1', expect.stringContaining('head-sha'));
+    expect(provider.create).toHaveBeenCalledTimes(1);
+    expect(provider.merge).not.toHaveBeenCalled();
+  });
+
+  it('pauses automatic tasks when credentials or permissions are required', async () => {
     engine = new QueueEngine(store, provider, { ...config, AUTO_CREATIVE: 'true' }, () => clock);
-    provider.advise = vi.fn().mockResolvedValue({ action: 'human', message: '需要配置付费密钥。' });
     await engine.tick();
     vi.mocked(provider.session).mockResolvedValue({ name: 'sessions/remote-1', state: 'AWAITING_USER_FEEDBACK' });
+    vi.mocked(provider.lastMessage).mockResolvedValue('Please provide an API key.');
     await engine.tick();
     expect(engine.meta.paused).toBe(true);
     expect(provider.message).not.toHaveBeenCalled();

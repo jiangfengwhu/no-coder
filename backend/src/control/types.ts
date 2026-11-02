@@ -28,6 +28,7 @@ export interface Job {
   browserHealthyTree?: string;
   autoReplyCount?: number;
   autoReply?: { hash: string; stage: 'sending' | 'sent' | 'human' };
+  deploymentReminder?: { head: string; stage: 'sending' | 'sent' };
   recovery?: { tree: string; stage: 'rolling_back' | 'sending' | 'repairing' | 'failed'; target: string };
 }
 
@@ -64,8 +65,6 @@ export interface Env {
   AGENT_QUEUE: DurableObjectNamespace;
   CANVAS?: Fetcher;
   JULES_API_KEY?: string;
-  AGNES_API_KEY?: string;
-  AGNES_ENABLED?: string;
   GITHUB_TOKEN?: string;
   QUEUE_ADMIN_TOKEN?: string;
   SUBMISSION_TOKEN?: string;

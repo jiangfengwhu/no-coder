@@ -1,6 +1,6 @@
 import { HttpError, type Env, type Job } from './types';
 import { deploymentLease } from './security';
-import { agnesAdvice, redactCoordinatorContext, type Advice, type AdviceKind } from './agnes';
+import { redactCoordinatorContext } from './security';
 
 interface Session {
   name: string;
@@ -22,7 +22,6 @@ interface PullRequest {
 }
 
 export interface Providers {
-  advise?(kind: AdviceKind, context: unknown): Promise<Advice | null>;
   runtimeHealth?(): Promise<{ ok: boolean; commit: string; tree: string; jobId: string }>;
   currentVersion?(): Promise<string>;
   rollback?(version: string): Promise<void>;
@@ -61,7 +60,6 @@ export function prNumberFromUrl(url: string, env: Env): number {
 export class LiveProviders implements Providers {
   constructor(private env: Env, private fetcher: typeof fetch = fetch.bind(globalThis)) {}
 
-  advise(kind: AdviceKind, context: unknown) { return agnesAdvice(this.env, kind, context, this.fetcher); }
 
   async runtimeHealth() {
     const request = new Request(`${this.env.CANVAS_URL}/api/health`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
@@ -132,7 +130,6 @@ export class LiveProviders implements Providers {
 
   async create(job: Job) {
     const source = await this.repositorySource();
-    const advice = await this.advise('brief', { title: job.title, description: job.description, acceptance: job.acceptance });
     const lease = this.env.DEPLOY_MODE === 'jules' ? await deploymentLease(job.id, this.env.QUEUE_ADMIN_TOKEN!) : '';
     return this.request<Session>('Jules', 'sessions', { method: 'POST', body: JSON.stringify({
       title: `[NC-${job.id}] ${job.title}`,
@@ -153,7 +150,6 @@ export class LiveProviders implements Providers {
         ] : ['完成后运行 npm run check，提交 PR；不要自行合并或部署。']),
         `任务标记：NC-${job.id}`,
         '<user_requirement>', job.title, job.description,
-        ...(advice ? ['<coordinator_brief>', advice.message, '</coordinator_brief>'] : []),
         `验收期望：${job.acceptance || '按需求实现，并保持已有功能可用。'}`, '</user_requirement>',
       ].join('\n\n'),
       sourceContext: { source, githubRepoContext: { startingBranch: this.env.GITHUB_BRANCH || 'main' } },
