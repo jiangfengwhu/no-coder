@@ -17,5 +17,6 @@ describe('Agnes coordinator', () => {
     const failed = vi.fn().mockResolvedValue(new Response('private upstream details', { status: 401 }));
     await expect(agnesAdvice(env, 'brief', {}, failed as typeof fetch)).rejects.toThrow('HTTP 401');
     expect(await agnesAdvice({} as Env, 'brief', {})).toBeNull();
+    expect(await agnesAdvice({ ...env, AGNES_ENABLED: 'false' }, 'brief', {})).toBeNull();
   });
 });

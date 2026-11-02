@@ -11,7 +11,7 @@ export function redactCoordinatorContext(env: Env, text: string): string {
 }
 
 export async function agnesAdvice(env: Env, kind: AdviceKind, context: unknown, fetcher: typeof fetch = fetch.bind(globalThis)): Promise<Advice | null> {
-  if (!configuredValue(env.AGNES_API_KEY)) return null;
+  if (env.AGNES_ENABLED === 'false' || !configuredValue(env.AGNES_API_KEY)) return null;
   let response: Response;
   try { response = await fetcher('https://apihub.agnes-ai.com/v1/chat/completions', {
     method: 'POST', headers: { Authorization: `Bearer ${env.AGNES_API_KEY}`, 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'noCoder-AgnesCoordinator/1.0' },

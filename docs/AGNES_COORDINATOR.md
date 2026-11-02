@@ -9,3 +9,5 @@
 PR 正在检查时也会重新查询原会话状态，发现再次等待输入或开始工作会返回会话状态处理。不会只检查 PR 而忽略新的对话。
 
 管理员可通过 `/api/admin` 的 `test_agnes` 操作测试 Worker 到 Agnes 的连通性与结构化解析。该操作需要管理密钥，仅使用固定的无敏感信息测试问题，不创建 Jules 会话。
+
+上线实测：本机调用 agnes-3.0-flash 返回 200；Cloudflare Worker 出口持续收到网关 429 页面。为避免阻塞队列，当前 AGNES_ENABLED 固定为 false。test_agnes 管理操作会绕过此开关进行连通性测试；确认 Worker 调用恢复后再启用。

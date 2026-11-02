@@ -148,7 +148,7 @@ export class AgentQueue extends DurableObject<Env> {
         if (!await secretMatches(bearer, this.env.QUEUE_ADMIN_TOKEN)) throw new HttpError(403, '管理密钥无效。');
         const action = textField(body, 'action', 1, 40);
         if (action === 'test_agnes') {
-          const result = await new LiveProviders(this.env).advise('feedback', { title: '连通性测试', requirement: '复用已有组件完成一个画板交互', question: '是否可以复用现有按钮组件？' });
+          const result = await new LiveProviders({ ...this.env, AGNES_ENABLED: 'true' }).advise('feedback', { title: '连通性测试', requirement: '复用已有组件完成一个画板交互', question: '是否可以复用现有按钮组件？' });
           return Response.json({ configured: Boolean(result), result });
         }
         if (action === 'mark_stable') { await this.engine.markStable(); return Response.json({ ok: true }); }

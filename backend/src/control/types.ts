@@ -65,6 +65,7 @@ export interface Env {
   CANVAS?: Fetcher;
   JULES_API_KEY?: string;
   AGNES_API_KEY?: string;
+  AGNES_ENABLED?: string;
   GITHUB_TOKEN?: string;
   QUEUE_ADMIN_TOKEN?: string;
   SUBMISSION_TOKEN?: string;
