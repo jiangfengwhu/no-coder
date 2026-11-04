@@ -12,6 +12,7 @@ export interface Job {
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
+  runtimeReviewedAt?: string;
   completedAt?: string;
   sessionId?: string;
   sessionUrl?: string;
@@ -39,6 +40,7 @@ export interface QueueMeta {
   activeId: string | null;
   paused: boolean;
   pauseReason?: string;
+  pauseKind?: 'timeout';
   latestCommit?: string;
   autoDay?: string;
   autoCount?: number;
@@ -81,6 +83,7 @@ export interface Env {
   APP_URL?: string;
   CANVAS_URL?: string;
   AUTO_CREATIVE?: string;
+  AUTO_ADMIN_REVIEW?: string;
   DEPLOY_MODE?: string;
 }
 

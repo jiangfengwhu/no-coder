@@ -26,6 +26,7 @@
     "APP_URL": "https://nocoder.297782.xyz",
     "AUTO_MERGE": "true",
     "AUTO_CREATIVE": "true",
+    "AUTO_ADMIN_REVIEW": "true",
     "APP_COMMIT": "local"
   }
 }

@@ -57,7 +57,7 @@ export class AgentQueue extends DurableObject<Env> {
 
   private async schedule() {
     const state = await this.engine.view('');
-    const needsWork = state.configured && !state.paused && (state.activeId || state.jobs.some(job => job.state === 'queued'));
+    const needsWork = state.configured && ((!state.paused && (state.activeId || state.jobs.some(job => job.state === 'queued'))) || this.engine.autoReviewPending);
     const current = await this.ctx.storage.getAlarm();
     if (needsWork) {
       if (!current || (!state.activeId && current > Date.now() + 2000)) await this.ctx.storage.setAlarm(Date.now() + 1000);

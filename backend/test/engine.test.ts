@@ -366,6 +366,51 @@ describe('durable serial queue', () => {
     expect(engine.meta.activeId).toBe(id);
   });
 
+  it('automatically renews overdue work without creating a new session', async () => {
+    engine = new QueueEngine(store, provider, { ...config, AUTO_ADMIN_REVIEW: 'true' }, () => clock);
+    const id = await submit(); await engine.tick();
+    clock += 2 * 60 * 60 * 1000 + 1;
+    await engine.tick();
+    expect(engine.meta.paused).toBe(false);
+    expect(engine.jobs.get(id)?.runtimeReviewedAt).toBe(new Date(clock).toISOString());
+    expect(engine.meta.activeId).toBe(id);
+    expect(provider.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers an existing timeout pause and notifies the original session waiting for deployment', async () => {
+    engine = new QueueEngine(store, provider, { ...config, AUTO_ADMIN_REVIEW: 'true', DEPLOY_MODE: 'jules' }, () => clock);
+    const id = await submit(); await engine.tick();
+    engine.meta.paused = true;
+    engine.meta.pauseReason = '当前任务已运行超过 2 小时，保留其队列位置等待管理员检查。';
+    expect(engine.autoReviewPending).toBe(true);
+    vi.mocked(provider.session).mockResolvedValue({ name: 'sessions/remote-1', state: 'AWAITING_USER_FEEDBACK' });
+    vi.mocked(provider.lastMessage).mockResolvedValue('The queue is paused; please resume the queue so I can deploy.');
+    await engine.tick();
+    expect(engine.meta.paused).toBe(false);
+    expect(provider.message).toHaveBeenCalledWith('remote-1', expect.stringContaining('Administrator check completed automatically'));
+    const lease = await deploymentLease(id, config.QUEUE_ADMIN_TOKEN!);
+    await expect(engine.deploymentCredentials(id, lease)).resolves.toHaveProperty('apiToken');
+    expect(provider.create).toHaveBeenCalledTimes(1);
+    expect(engine.autoReviewPending).toBe(false);
+  });
+
+  it('does not auto-resume manual pauses or failed recovery and retries unavailable timeout checks later', async () => {
+    engine = new QueueEngine(store, provider, { ...config, AUTO_ADMIN_REVIEW: 'true' }, () => clock);
+    const id = await submit(); await engine.tick();
+    await engine.admin('pause');
+    await engine.tick();
+    expect(engine.meta.paused).toBe(true);
+    expect(engine.autoReviewPending).toBe(false);
+    engine.meta.pauseReason = '当前任务已运行超过 2 小时，保留其队列位置等待管理员检查。';
+    vi.mocked(provider.session).mockRejectedValueOnce(new Error('network unavailable'));
+    await engine.tick();
+    expect(engine.meta.paused).toBe(true);
+    expect(engine.autoReviewPending).toBe(true);
+    engine.jobs.get(id)!.recovery = { tree: 'bad', stage: 'failed', target: 'stable' };
+    await engine.tick();
+    expect(engine.meta.paused).toBe(true);
+  });
+
   it('revalidates PRs when optional manual merge approval is enabled', async () => {
     engine = new QueueEngine(store, provider, { ...config, AUTO_MERGE: 'false' }, () => clock);
     const id = await submit(); await engine.tick(); completeGeneration(); await engine.tick(); await engine.tick();

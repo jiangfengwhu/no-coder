@@ -4,6 +4,7 @@ import { deploymentLease, digest, secretMatches } from './security';
 
 const MAX_WAITING = 100;
 const MAX_RUNTIME = 2 * 60 * 60 * 1000;
+const TIMEOUT_REASON = '当前任务已运行超过 2 小时，保留其队列位置等待管理员检查。';
 const CREATIVE_THEMES = ['有趣的小互动', '画板上的探索和发现', '轻量创意工具', '可访问的视觉反馈', '一人即可玩的小游戏', '令人惊喜的细节'];
 
 export class QueueEngine {
@@ -52,10 +53,11 @@ export class QueueEngine {
     this.onChange?.();
   }
 
-  private async pause(job: Job, message: string) {
+  private async pause(job: Job, message: string, kind?: 'timeout') {
     job.message = message;
     this.meta.paused = true;
     this.meta.pauseReason = message;
+    this.meta.pauseKind = kind;
     await this.save(job, message);
   }
 
@@ -150,10 +152,12 @@ export class QueueEngine {
       } else if (action === 'pause') {
         this.meta.paused = true;
         this.meta.pauseReason = '管理员已暂停调度。';
+        this.meta.pauseKind = undefined;
       } else if (action === 'resume') {
         this.meta.paused = false;
         this.meta.pauseReason = undefined;
-        if (active) { active.startedAt = this.date(); active.message = '调度已恢复，等待下一次状态检查。'; }
+        this.meta.pauseKind = undefined;
+        if (active) { active.startedAt = this.date(); active.runtimeReviewedAt = undefined; active.message = '调度已恢复，等待下一次状态检查。'; }
       } else if (action === 'approve_merge') {
         if (active?.state !== 'ready_to_merge') throw new HttpError(409, '当前没有等待合并的任务。');
         active.mergeApproved = true;
@@ -197,6 +201,42 @@ export class QueueEngine {
   }
 
   tick() { return this.exclusive(() => this.step()); }
+
+  get autoReviewPending() {
+    const active = this.meta.activeId ? this.jobs.get(this.meta.activeId) : undefined;
+    const recoveryUncertain = active?.recovery && ['failed', 'rolling_back', 'sending'].includes(active.recovery.stage);
+    return this.env.AUTO_ADMIN_REVIEW === 'true' && this.meta.paused && Boolean(active?.sessionId) && !recoveryUncertain && (this.meta.pauseKind === 'timeout' || this.meta.pauseReason === TIMEOUT_REASON);
+  }
+
+  private async reviewOverdue(job: Job): Promise<boolean> {
+    if (!job.sessionId || job.recovery?.stage === 'failed' || job.recovery?.stage === 'rolling_back' || job.recovery?.stage === 'sending') return false;
+    let remote;
+    try { remote = await this.providers.session(job.sessionId); }
+    catch { return false; } // The same timeout remains eligible for a later alarm; no repeated writes.
+    if (remote.title && !remote.title.startsWith(`[NC-${job.id}]`)) { await this.pause(job, '自动检查发现原会话任务标记不匹配。'); return false; }
+    if (!['QUEUED', 'PLANNING', 'IN_PROGRESS', 'AWAITING_USER_FEEDBACK', 'COMPLETED'].includes(remote.state)) {
+      await this.pause(job, `自动检查发现 Jules 状态为 ${remote.state}，需要处理后恢复。`); return false;
+    }
+    let question: string | undefined;
+    if (remote.state === 'AWAITING_USER_FEEDBACK') {
+      try { question = await this.providers.lastMessage(job.sessionId); } catch { return false; }
+    }
+    job.runtimeReviewedAt = this.date();
+    job.sessionState = remote.state;
+    this.meta.paused = false; this.meta.pauseReason = undefined; this.meta.pauseKind = undefined;
+    job.message = '自动检查通过，原任务已续期，部署凭据可正常领取。';
+    await this.save(job, job.message);
+    if (remote.state === 'AWAITING_USER_FEEDBACK') {
+      if (question && /queue.{0,50}paus|队列.{0,20}暂停|deploy.{0,80}(403|credential|token)|凭据.{0,30}(拒绝|403)|resume.{0,30}queue/is.test(question)) {
+        await this.save(job, '自动检查正在通知原会话：队列已恢复，可继续发布。');
+        try {
+          await this.providers.message(job.sessionId, 'Administrator check completed automatically: the queue is resumed and this same active task has been renewed. The deployment credentials broker is available again. Continue this session and run npm run deploy:jules with your original NC_JOB_ID and NC_DEPLOY_TOKEN. Commit and push the exact source, deploy it, and update the same PR; do not create another session or merge the PR.');
+          job.state = 'running';
+        } catch { await this.pause(job, '自动续期通知的发送结果未确认，请检查原 Jules 会话。'); return false; }
+      }
+    }
+    return true;
+  }
 
   private async stableSnapshot(expectedTree?: string) {
     if (!this.providers.runtimeHealth || !this.providers.currentVersion) throw new HttpError(503, '恢复服务不可用。');
@@ -269,7 +309,7 @@ export class QueueEngine {
           JSON.stringify({ kind: report.kind, message: report.message, location: report.location }),
           `After committing, deploy with NC_JOB_ID=${job.id} NC_DEPLOY_TOKEN=${lease} npm run deploy:jules. Never print or commit this authorization.`,
         ].join('\n'));
-        job.recovery.stage = 'repairing'; job.state = 'running'; job.startedAt = this.date(); job.completedAt = undefined; job.mergeSha = undefined; job.headSha = undefined;
+        job.recovery.stage = 'repairing'; job.state = 'running'; job.startedAt = this.date(); job.runtimeReviewedAt = undefined; job.completedAt = undefined; job.mergeSha = undefined; job.headSha = undefined;
         this.meta.paused = false; this.meta.pauseReason = undefined;
         await this.save(job, '已回退并通知原 Jules 会话修复前端异常。');
         return { accepted: true, duplicate: false };
@@ -282,7 +322,11 @@ export class QueueEngine {
   }
 
   private async step() {
-    if (this.meta.paused || missingConfig(this.env).length) return;
+    if (missingConfig(this.env).length) return;
+    if (this.meta.paused) {
+      const active = this.meta.activeId ? this.jobs.get(this.meta.activeId) : undefined;
+      if (!this.autoReviewPending || !active || !await this.reviewOverdue(active)) return;
+    }
     let job = this.meta.activeId ? this.jobs.get(this.meta.activeId) : undefined;
     if (!job) {
       if (this.meta.activeId) {
@@ -331,9 +375,12 @@ export class QueueEngine {
       return;
     }
 
-    if (job.startedAt && this.now() - Date.parse(job.startedAt) > MAX_RUNTIME) {
-      await this.pause(job, '当前任务已运行超过 2 小时，保留其队列位置等待管理员检查。');
-      return;
+    if (job.startedAt && this.now() - Date.parse(job.runtimeReviewedAt || job.startedAt) > MAX_RUNTIME) {
+      if (this.env.AUTO_ADMIN_REVIEW !== 'true') { await this.pause(job, TIMEOUT_REASON, 'timeout'); return; }
+      if (!await this.reviewOverdue(job)) {
+        if (!this.meta.paused) await this.pause(job, TIMEOUT_REASON, 'timeout');
+        return;
+      }
     }
 
     try {
