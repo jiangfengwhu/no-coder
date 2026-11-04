@@ -5,6 +5,7 @@ import { deploymentLease, digest, secretMatches } from './security';
 const MAX_WAITING = 100;
 const MAX_RUNTIME = 2 * 60 * 60 * 1000;
 const TIMEOUT_REASON = '当前任务已运行超过 2 小时，保留其队列位置等待管理员检查。';
+const MISSING_PR_REASON = 'Jules 已结束但没有 PR，需核对会话发布结果。';
 const CREATIVE_THEMES = ['有趣的小互动', '画板上的探索和发现', '轻量创意工具', '可访问的视觉反馈', '一人即可玩的小游戏', '令人惊喜的细节'];
 
 export class QueueEngine {
@@ -53,7 +54,7 @@ export class QueueEngine {
     this.onChange?.();
   }
 
-  private async pause(job: Job, message: string, kind?: 'timeout') {
+  private async pause(job: Job, message: string, kind?: 'timeout' | 'missing_pr') {
     job.message = message;
     this.meta.paused = true;
     this.meta.pauseReason = message;
@@ -205,7 +206,7 @@ export class QueueEngine {
   get autoReviewPending() {
     const active = this.meta.activeId ? this.jobs.get(this.meta.activeId) : undefined;
     const recoveryUncertain = active?.recovery && ['failed', 'rolling_back', 'sending'].includes(active.recovery.stage);
-    return this.env.AUTO_ADMIN_REVIEW === 'true' && this.meta.paused && Boolean(active?.sessionId) && !recoveryUncertain && (this.meta.pauseKind === 'timeout' || this.meta.pauseReason === TIMEOUT_REASON);
+    return this.env.AUTO_ADMIN_REVIEW === 'true' && this.meta.paused && Boolean(active?.sessionId) && !recoveryUncertain && (this.meta.pauseKind === 'timeout' || this.meta.pauseKind === 'missing_pr' || this.meta.pauseReason === TIMEOUT_REASON || this.meta.pauseReason === MISSING_PR_REASON);
   }
 
   private async reviewOverdue(job: Job): Promise<boolean> {
@@ -427,7 +428,17 @@ export class QueueEngine {
         } else if (session.state === 'COMPLETED') {
           const url = session.outputs?.find(output => output.pullRequest?.url)?.pullRequest?.url;
           if (!url) {
-            if (this.env.DEPLOY_MODE === 'jules') await this.pause(job, 'Jules 已结束但没有 PR，需核对会话发布结果。');
+            if (job.completionFollowupAt && this.now() - Date.parse(job.completionFollowupAt) < 10 * 60 * 1000) return;
+            if (this.env.DEPLOY_MODE === 'jules' && this.env.AUTO_ADMIN_REVIEW === 'true' && (job.completionFollowups ?? 0) < 2) {
+              job.completionFollowups = (job.completionFollowups ?? 0) + 1;
+              job.completionFollowupAt = this.date();
+              job.state = 'running'; job.runtimeReviewedAt = this.date();
+              await this.save(job, '会话已结束但未生成 PR，自动通知原会话继续完成发布。');
+              const lease = await deploymentLease(job.id, this.env.QUEUE_ADMIN_TOKEN!);
+              await this.providers.message(job.sessionId!, `Administrator check: this same task is active, the queue is resumed, and deployment is authorized within the existing scope. Your session ended without a PR. Continue this SAME session: stage all required source files, commit and push, run NC_JOB_ID=${job.id} NC_DEPLOY_TOKEN=${lease} npm run deploy:jules, verify the live tree, and create/update the PR against main with exactly the deployed tree. Do not create another session or merge the PR. Do not print or commit the authorization. If blocked, report the concrete error.`);
+              job.message = '已自动通知原会话完成部署和 PR，等待 Jules 继续。';
+              await this.save(job);
+            } else if (this.env.DEPLOY_MODE === 'jules') await this.pause(job, this.env.AUTO_ADMIN_REVIEW === 'true' ? 'Jules 连续结束而未提交 PR，自动跟进已达上限，请检查原会话。' : MISSING_PR_REASON);
             else await this.finish(job, 'failed', 'Jules 已结束，但没有产出可发布的 PR。');
             return;
           }

@@ -377,6 +377,27 @@ describe('durable serial queue', () => {
     expect(provider.create).toHaveBeenCalledTimes(1);
   });
 
+  it('follows up a completed session without a PR within a bounded limit', async () => {
+    engine = new QueueEngine(store, provider, { ...config, AUTO_ADMIN_REVIEW: 'true', DEPLOY_MODE: 'jules' }, () => clock);
+    const id = await submit(); await engine.tick();
+    engine.meta.paused = true; engine.meta.pauseReason = 'Jules 已结束但没有 PR，需核对会话发布结果。';
+    vi.mocked(provider.session).mockResolvedValue({ name: 'sessions/remote-1', state: 'COMPLETED' });
+    await engine.tick();
+    expect(engine.meta.paused).toBe(false);
+    expect(engine.jobs.get(id)?.completionFollowups).toBe(1);
+    expect(provider.message).toHaveBeenCalledWith('remote-1', expect.stringContaining('Continue this SAME session'));
+    await engine.tick();
+    expect(provider.message).toHaveBeenCalledTimes(1);
+    clock += 10 * 60 * 1000;
+    await engine.tick();
+    clock += 10 * 60 * 1000;
+    await engine.tick();
+    expect(provider.message).toHaveBeenCalledTimes(2);
+    expect(engine.meta.paused).toBe(true);
+    expect(engine.autoReviewPending).toBe(false);
+    expect(provider.create).toHaveBeenCalledTimes(1);
+  });
+
   it('recovers an existing timeout pause and notifies the original session waiting for deployment', async () => {
     engine = new QueueEngine(store, provider, { ...config, AUTO_ADMIN_REVIEW: 'true', DEPLOY_MODE: 'jules' }, () => clock);
     const id = await submit(); await engine.tick();

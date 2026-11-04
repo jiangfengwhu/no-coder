@@ -13,6 +13,8 @@ export interface Job {
   updatedAt: string;
   startedAt?: string;
   runtimeReviewedAt?: string;
+  completionFollowups?: number;
+  completionFollowupAt?: string;
   completedAt?: string;
   sessionId?: string;
   sessionUrl?: string;
@@ -40,7 +42,7 @@ export interface QueueMeta {
   activeId: string | null;
   paused: boolean;
   pauseReason?: string;
-  pauseKind?: 'timeout';
+  pauseKind?: 'timeout' | 'missing_pr';
   latestCommit?: string;
   autoDay?: string;
   autoCount?: number;
