@@ -57,10 +57,18 @@ export class AgentQueue extends DurableObject<Env> {
 
   private async schedule() {
     const state = await this.engine.view('');
-    const needsWork = state.configured && ((!state.paused && (state.activeId || state.jobs.some(job => job.state === 'queued'))) || this.engine.autoReviewPending);
+    const needsWork = state.configured && !state.paused && (state.activeId || state.jobs.some(job => job.state === 'queued'));
     const current = await this.ctx.storage.getAlarm();
+    const reviewDue = await this.ctx.storage.get<number>('auto-review-at');
+    if (state.configured && this.engine.autoReviewPending) {
+      const due = reviewDue ?? Date.now() + 60 * 60_000;
+      if (!reviewDue) await this.ctx.storage.put('auto-review-at', due);
+      if (current !== due) await this.ctx.storage.setAlarm(due);
+      return;
+    }
+    if (reviewDue) await this.ctx.storage.delete('auto-review-at');
     if (needsWork) {
-      if (!current || (!state.activeId && current > Date.now() + 2000)) await this.ctx.storage.setAlarm(Date.now() + 1000);
+      if (reviewDue || !current || (!state.activeId && current > Date.now() + 2000)) await this.ctx.storage.setAlarm(Date.now() + 1000);
     } else if (state.configured && !state.paused && this.env.AUTO_CREATIVE === 'true') {
       const now = Date.now();
       const nextDay = (Math.floor((now + 8 * 60 * 60 * 1000) / 86_400_000) + 1) * 86_400_000 - 8 * 60 * 60 * 1000;
@@ -72,7 +80,9 @@ export class AgentQueue extends DurableObject<Env> {
 
   async alarm() {
     // Schedule recovery before network work; a terminated invocation can resume safely.
-    await this.ctx.storage.setAlarm(Date.now() + 60_000);
+    const due = Date.now() + (this.engine.autoReviewPending ? 60 * 60_000 : 60_000);
+    if (this.engine.autoReviewPending) await this.ctx.storage.put('auto-review-at', due);
+    await this.ctx.storage.setAlarm(due);
     try { await this.engine.tick(); }
     finally { await this.schedule(); }
   }
